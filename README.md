@@ -22,7 +22,7 @@
 ### 环境要求
 
 ```
-Python >= 3.8
+Python >= 3.8  （推荐 3.10+）
 torch >= 2.0
 transformers >= 4.30
 ```
@@ -30,14 +30,31 @@ transformers >= 4.30
 ### 安装
 
 ```bash
+git clone git@github.com:meijn572/text-defence.git
+cd text-defence
 pip install -r requirements.txt
 ```
 
-### 演示（无需训练，直接看效果）
+### ⚠️ 下载模型文件（必须）
+
+由于模型文件较大（~1.2GB），不在 Git 仓库中。请从 [Release 页面](https://github.com/meijn572/text-defence/releases) 下载 `baseline_bert.pth` 和 `fusion_model.pth`，放入 `data/processed/` 目录：
+
+```
+data/processed/
+├── baseline_bert.pth       (391MB)
+├── baseline_bert_aug.pth   (391MB，可选)
+└── fusion_model.pth        (438MB，可选)
+```
+
+> 最少只需 `baseline_bert.pth`（391MB）即可运行演示。
+
+### 演示（加载模型，直接推理）
 
 ```bash
 python demo.py
 ```
+
+输出：10 个测试子集的 F1 评测 + 5 条单文本双模型推理对比。
 
 加载已训练模型（`data/processed/*.pth`），在 3,300 条测试集上评测并展示单条推理效果。
 
@@ -147,15 +164,13 @@ python run_strong_attack.py
 
 ## 模型下载
 
-模型文件较大（共 1.2GB），请从网盘下载后放入 `data/processed/`：
+模型文件较大（共 1.2GB），请从 [GitHub Releases](https://github.com/meijn572/text-defence/releases) 下载后放入 `data/processed/`：
 
-| 文件 | 大小 | 说明 |
-|------|------|------|
-| `baseline_bert.pth` | 391MB | 朴素 BERT 基线 |
-| `baseline_bert_aug.pth` | 391MB | BERT + 正规化 |
-| `fusion_model.pth` | 438MB | 四通道融合 |
-
-> 链接待补充
+| 文件 | 大小 | 说明 | 必需 |
+|------|------|------|:----:|
+| `baseline_bert.pth` | 391MB | 朴素 BERT 基线 | ✅ |
+| `baseline_bert_aug.pth` | 391MB | BERT + 正规化 | — |
+| `fusion_model.pth` | 438MB | 四通道融合 | — |
 
 ## 已知限制
 
