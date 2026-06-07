@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Models (too large, share via cloud drive)
+data/processed/*.pth
+
+# Data (sensitive/large)
+data/raw/spam_data_2k.csv
+data/raw/spam_data_small.csv
+data/raw/spam_data_full.csv
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
