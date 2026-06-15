@@ -38,7 +38,7 @@ np.random.seed(SEED)
 
 # 设备选择（用 CPU 避免脚本模式下的 CUDA 驱动兼容性问题）
 import torch
-_USE_GPU = torch.cuda.is_available() and os.environ.get('USE_GPU', '0') == '1'
+_USE_GPU = torch.cuda.is_available() #  and os.environ.get('USE_GPU', '0') == '1'  # TODO:注意USE_GPU参数，可能需要改
 DEVICE = torch.device('cuda' if _USE_GPU else 'cpu')
 print(f"[INFO] 使用设备: {DEVICE} (GPU={'ON' if _USE_GPU else 'OFF'})")
 

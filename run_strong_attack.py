@@ -4,7 +4,7 @@ import sys, os, random, pandas as pd
 import torch, numpy as np
 from sklearn.metrics import f1_score
 
-BASE = r'd:\3_second\big_data\work\text-defense'
+BASE = os.path.dirname(os.path.abspath(__file__))  # 自动获取路径
 os.chdir(BASE)
 sys.path.insert(0, BASE)
 
@@ -65,7 +65,7 @@ print("  评测: 朴素 BERT vs 四通道融合")
 print("  测试子集: 原始 + A~I (原) + J/K/L (强)")
 print("="*50)
 
-DEV = torch.device('cpu')
+DEV = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # 加载模型
 print("\n加载模型...")
@@ -97,24 +97,49 @@ for aid in list('ABCDEFGHI') + list('JKL'):
 
 # 评测
 results = []
+def eval_model(model, texts, labels, ablation=None):
+    """评测函数，返回 F1 和 Accuracy"""
+    loader = create_data_loader(texts, labels, batch_size=16, shuffle=False)
+    all_preds, all_labels = [], []
+    with torch.no_grad():
+        for batch_texts, batch_labels in loader:
+            if isinstance(model, FusionClassifier) and ablation:
+                logits = model(batch_texts, ablation=ablation)
+            else:
+                logits = model(batch_texts)
+            preds = torch.argmax(logits, dim=1)
+            all_preds.extend(preds.cpu().tolist())
+            all_labels.extend(batch_labels.cpu().tolist())
+    f1 = f1_score(all_labels, all_preds, zero_division=0)
+    accuracy = sum(1 for p,l in zip(all_preds, all_labels) if p==l) / len(all_labels)
+    return f1, accuracy
+
 for model_name, model in [('朴素 BERT', model_bert), ('四通道融合', model_fusion)]:
     print(f"\n  {model_name}:")
     model.eval()
     for sname, (txts, lbs) in subsets.items():
-        loader = create_data_loader(txts, lbs, batch_size=16, shuffle=False)
-        ap, al = [], []
-        with torch.no_grad():
-            for bt, bl in loader:
-                logits = model(bt)
-                ap.extend(torch.argmax(logits, dim=1).cpu().tolist())
-                al.extend(bl.cpu().tolist())
-        f1 = f1_score(al, ap, zero_division=0)
-        acc = sum(1 for a,b in zip(ap,al) if a==b)/len(al)
+        f1, acc = eval_model(model, txts, lbs)
         results.append({'model': model_name, 'subset': sname, 'f1': f1, 'accuracy': acc})
         marker = ''
         if 'J' in sname or 'K' in sname or 'L' in sname:
             marker = ' ★'
         print(f"    {sname:30s} | F1={f1:.4f}  Acc={acc:.4f}{marker}")
+
+# 消融
+print(f"\n{('='*50)}")
+print(f"  消融实验")
+print(f"{'='*50}")
+for channel in ['text', 'phonetic', 'visual', 'bow']:
+    print(f"\n  四通道融合 - 消融: 置零 {channel} 通道")
+    model.eval()
+    for sname, (txts, lbs) in subsets.items():
+        f1, acc = eval_model(model_fusion, txts, lbs, ablation=channel)
+        results.append({'model': f"四通道融合: N{channel}", 'subset': sname, 'f1': f1, 'accuracy': acc})
+        marker = ''
+        if 'J' in sname or 'K' in sname or 'L' in sname:
+            marker = ' ★'
+        print(f"    {sname:30s} | F1={f1:.4f}  Acc={acc:.4f}{marker}")
+
 
 # 对比表
 rdf = pd.DataFrame(results)
@@ -123,16 +148,20 @@ rdf.to_csv(os.path.join(RESULTS_DIR, 'strong_attack_results.csv'), index=False)
 print(f"\n{'='*50}")
 print(f"  对比：强攻击下的 F1 差异")
 print(f"{'='*50}")
-print(f"{'攻击类型':25s} | {'朴素BERT':>8s} | {'四通道融合':>8s} | {'差异':>8s}")
+title = f"{'攻击类型':25s} | {'朴素BERT':>8s} | {'四通道融合':>8s}"
+for channel in ['text', 'phonetic', 'visual', 'bow']:
+    title += f" | {'融合: N'+channel:>8s}"
+print(title)
 print("-" * 58)
 for aid in list('ABCDEFGHI') + list('JKL'):
     name = ATTACK_NAMES.get(aid, aid)
     subset_key = f'对抗_{aid} ({name})'
     bert_row = rdf[(rdf.model=='朴素 BERT') & (rdf.subset==subset_key)]
     fusion_row = rdf[(rdf.model=='四通道融合') & (rdf.subset==subset_key)]
+    ablation_rows = {channel: rdf[(rdf.model==f'四通道融合: N{channel}') & (rdf.subset==subset_key)] for channel in ['text', 'phonetic', 'visual', 'bow']}
     if len(bert_row) > 0 and len(fusion_row) > 0:
         bf1 = bert_row.iloc[0]['f1']
         ff1 = fusion_row.iloc[0]['f1']
-        diff = ff1 - bf1
-        diff_str = f"+{diff:.4f}" if diff > 0 else f"{diff:.4f}"
-        print(f"{name:25s} | {bf1:8.4f} | {ff1:8.4f} | {diff_str:>8s}")
+        abl = {channel: ablation_rows[channel].iloc[0]['f1'] if len(ablation_rows[channel]) > 0 else None 
+            for channel in ['text', 'phonetic', 'visual', 'bow']}
+        print(f"{name:25s} | {bf1:8.4f} | {ff1:8.4f} | {abl['text']:8.4f} | {abl['phonetic']:8.4f} | {abl['visual']:8.4f} | {abl['bow']:8.4f}")
