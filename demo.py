@@ -2,7 +2,7 @@
 """演示脚本 —— 加载已有模型，快速推理（无需训练）"""
 import sys, os
 
-BASE = r"d:\3_second\big_data\work\text-defense"
+BASE = os.path.dirname(os.path.abspath(__file__))  # 自动获取路径
 os.chdir(BASE)
 sys.path.insert(0, BASE)
 
@@ -15,7 +15,7 @@ from sklearn.metrics import f1_score
 from defense.text_channel import BertClassifier
 from defense.fusion_model import FusionClassifier, create_data_loader
 
-DEV = torch.device("cpu")
+DEV = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 PROCESSED = os.path.join(BASE, "data", "processed")
 
 print("=" * 50)
@@ -71,13 +71,23 @@ for text, desc in examples:
     with torch.no_grad():
         bp = torch.softmax(bert([text]), dim=1)[0]
         fp = torch.softmax(fusion([text]), dim=1)[0]
+        fp_ablation = {
+            'text': torch.softmax(fusion([text], ablation=['text']), dim=1)[0],
+            'phonetic': torch.softmax(fusion([text], ablation=['phonetic']), dim=1)[0],
+            'visual': torch.softmax(fusion([text], ablation=['visual']), dim=1)[0],
+            'bow': torch.softmax(fusion([text], ablation=['bow']), dim=1)[0]
+        }
     print(f"\n  [{desc}] {text}")
     print(f"    BERT:   正常={bp[0]:.3f} 垃圾={bp[1]:.3f}")
     print(f"    Fusion: 正常={fp[0]:.3f} 垃圾={fp[1]:.3f}")
+    print(f"---------消融实验---------------------------")
+    for channel, logits in fp_ablation.items():
+        print(f"      N{channel}: 正常={logits[0]:.3f} 垃圾={logits[1]:.3f}")
 
 print("\n" + "=" * 50)
 print("  完整评测结果（实验记录）")
 print("=" * 50)
+# TODO:这里怎么是硬编码结果，还没检查是否和运行结果对应，后续可能要改
 results = [
     ("原始样本", 0.9055, 0.9043), ("A 字符删除", 0.9779, 0.9796),
     ("B 字符插入", 0.9967, 0.9967), ("C 跨语种同形", 0.9510, 0.9583),

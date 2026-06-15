@@ -3,7 +3,7 @@
 import sys, os, traceback
 
 # 设置项目路径
-BASE = r'd:\3_second\big_data\work\text-defense'
+BASE = os.path.dirname(os.path.abspath(__file__))  # 自动获取路径
 os.chdir(BASE)
 if BASE not in sys.path:
     sys.path.insert(0, BASE)

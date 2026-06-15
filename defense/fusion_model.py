@@ -32,33 +32,28 @@ class FusionClassifier(nn.Module):
     """
 
     def __init__(self, freeze_channels: bool = True,
-                 text_model_name: str = 'bert-base-chinese'):
-        """
-        参数:
-            freeze_channels: 是否冻结四个子通道参数
-            text_model_name: BERT 模型名称
-        """
+             text_model_name: str = 'bert-base-chinese',
+             device: torch.device = None):  # 新增device参数,决定是否使用gpu
         super().__init__()
-
-        # 初始化四个子通道
-        self.text_channel = TextChannel(
-            model_name=text_model_name,
-            freeze_bert=freeze_channels
-        )
+        
+        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        self.text_channel = TextChannel(model_name=text_model_name, freeze_bert=freeze_channels)
         self.phonetic_channel = PhoneticChannel()
         self.visual_channel = VisualChannel(freeze_cnn=freeze_channels)
         self.bow_channel = BowChannel()
-
-        # 计算总特征维度
-        total_dim = (self.text_channel.feature_dim +    # 768
-                     self.phonetic_channel.feature_dim + # 256
-                     self.visual_channel.feature_dim +   # 512
-                     self.bow_channel.feature_dim)       # 128
-        # total_dim = 768 + 256 + 512 + 128 = 1664
-
-        print(f"[融合模型] 总输入维度: {total_dim}")
-
-        # 融合分类头
+        
+        self.text_channel = self.text_channel.to(self.device)
+        self.phonetic_channel = self.phonetic_channel.to(self.device)
+        self.visual_channel = self.visual_channel.to(self.device)
+        self.bow_channel = self.bow_channel.to(self.device)
+        
+        total_dim = (self.text_channel.feature_dim +     # 768
+                    self.phonetic_channel.feature_dim + # 256
+                    self.visual_channel.feature_dim +   # 512
+                    self.bow_channel.feature_dim)       # 128
+        print(f"[融合模型] 总输入维度: {total_dim}, 设备: {self.device}")
+        
         self.fusion_head = nn.Sequential(
             nn.Linear(total_dim, 512),
             nn.ReLU(),
@@ -66,20 +61,21 @@ class FusionClassifier(nn.Module):
             nn.Linear(512, 128),
             nn.ReLU(),
             nn.Dropout(0.2),
-            nn.Linear(128, 2),  # 二分类输出
+            nn.Linear(128, 2),
         )
 
-    def forward(self, texts: list, return_features: bool = False):
+    def forward(self, texts: list, return_features: bool = False, ablation: list = None):
         """
         前向传播
 
         参数:
             texts:          文本列表
-            return_features: 是否返回各通道特征 (用于分析)
+            return_features: 是否返回特征
+            ablation:       要屏蔽的通道列表 (用于消融实验)
 
         返回:
-            如果 return_features=False: logits (batch, 2)
-            如果 return_features=True: (logits, features_dict)
+            logits:         (batch, 2) 分类输出
+            ablation_feats: (可选) 消融特征字典
         """
         # 预处理: 正规化
         clean_texts = [preprocess_text(t) for t in texts]
@@ -89,6 +85,17 @@ class FusionClassifier(nn.Module):
         phonetic_feat = self.phonetic_channel(clean_texts)  # (batch, 256)
         visual_feat = self.visual_channel(clean_texts)      # (batch, 512)
         bow_feat = self.bow_channel(clean_texts)            # (batch, 128)
+
+        # 消融实验: 将指定通道特征置零
+        if ablation:
+            if 'text' in ablation:
+                text_feat = torch.zeros_like(text_feat)
+            if 'phonetic' in ablation:
+                phonetic_feat = torch.zeros_like(phonetic_feat)
+            if 'visual' in ablation:
+                visual_feat = torch.zeros_like(visual_feat)
+            if 'bow' in ablation:
+                bow_feat = torch.zeros_like(bow_feat)
 
         # 拼接
         combined = torch.cat([text_feat, phonetic_feat,
@@ -185,24 +192,25 @@ def evaluate(model, loader, criterion, device):
 
 
 if __name__ == '__main__':
-    print("=" * 50)
-    print("  四通道融合模型测试")
-    print("=" * 50)
-
-    model = FusionClassifier()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"使用设备: {device}")
+    
+    model = FusionClassifier(device=device)
+    model = model.to(device)  # fusion_head 也移到 GPU
+    
     test_texts = [
         "免费领取优惠券",
         "明天上午十点开会",
-        "佳薇芯免废戴理",  # 音近字攻击
+        "佳薇芯免废戴理",
     ]
-
+    
     model.eval()
     with torch.no_grad():
         logits = model(test_texts)
         probs = torch.softmax(logits, dim=1)
-
+    
     print(f"\n测试文本数: {len(test_texts)}")
-    print(f"Logits shape: {logits.shape}")  # (3, 2)
+    print(f"Logits shape: {logits.shape}")
     for i, t in enumerate(test_texts):
         print(f"  [{i}] {t}")
         print(f"      正常: {probs[i][0]:.4f}, 垃圾: {probs[i][1]:.4f}")

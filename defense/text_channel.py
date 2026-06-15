@@ -36,10 +36,10 @@ class TextChannel(nn.Module):
 
         print(f"[文本通道] 加载 BERT 模型: {model_name}")
         self.tokenizer = BertTokenizer.from_pretrained(
-            model_name, local_files_only=True
+            model_name, local_files_only=False
         )
         self.bert = BertModel.from_pretrained(
-            model_name, local_files_only=True
+            model_name, local_files_only=False
         )
         self.dropout = nn.Dropout(dropout)
         self.feature_dim = 768  # BERT-base 的隐藏维度
