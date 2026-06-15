@@ -9,22 +9,24 @@
 
 - **攻击方**：9 种中文特有对抗攻击（音近字、形近字、繁简混用、字符乱序等）
 - **防御方**：四通道融合检测架构（BERT + 拼音CNN + 视觉ResNet + 字袋BoW）
-- **实验验证**：3 模型 × 12 攻击类型的全面对比评测
+- **实验验证**：3 模型 × 13 攻击类型的全面对比评测（含强攻击加测）
+- **消融实验**：零点置零法评估各通道贡献度
 
 ### 核心发现
 
-**预训练 BERT 对中文对抗扰动具有意外的高鲁棒性**——12 种攻击下 F1 均 ≥ 0.95。四通道融合设计合理，但在当前规模下未体现显著优势。
+**BERT 文本通道是融合模型的核心驱动力** —— 置零后 F1 跌至 0.27~0.40，而其他通道单独置零时变化不超过 0.02。预训练 BERT 对中文对抗扰动具有高鲁棒性（F1 ≥ 0.95），四通道融合在整体上相比朴素 BERT 有小幅提升。
 
 详见 [`实验结论.md`](实验结论.md)
 
 ## 快速开始
 
-### 环境要求
+### 环境���求
 
 ```
 Python >= 3.8  （推荐 3.10+）
 torch >= 2.0
 transformers >= 4.30
+CUDA 环境（可选，支持 GPU 加速）
 ```
 
 ### 安装
@@ -32,12 +34,12 @@ transformers >= 4.30
 ```bash
 git clone git@github.com:meijn572/text-defence.git
 cd text-defence
-pip install -r requirements.txt
+pip install -r requirements_new.txt
 ```
 
-### ⚠️ 下载模型文件（必须）
+### ⚠️ 下载模型文件（可选）
 
-由于模型文件较大（~1.2GB），不在 Git 仓库中。请从 [Release 页面](https://github.com/meijn572/text-defence/releases) 下载 `baseline_bert.pth` 和 `fusion_model.pth`，放入 `data/processed/` 目录：
+由于模型文件较大（~1.2GB），可从 [Release 页面](https://github.com/meijn572/text-defence/releases) 下载 `baseline_bert.pth` 等文件，放入：
 
 ```
 data/processed/
@@ -46,46 +48,34 @@ data/processed/
 └── fusion_model.pth        (438MB，可选)
 ```
 
-> 最少只需 `baseline_bert.pth`（391MB）即可运行演示。
-
 ### 演示（加载模型，直接推理）
 
 ```bash
 python demo.py
 ```
 
-输出：10 个测试子集的 F1 评测 + 5 条单文本双模型推理对比。
+输出：13 个测试子集的 F1 评测 + 单文本多模型推理对比。
 
-加载已训练模型（`data/processed/*.pth`），在 3,300 条测试集上评测并展示单条推理效果。
-
-### 完整实验流程
+### 完整实验流程（一键运行）
 
 ```bash
-# 实验01：对抗样本生成（~30秒）
-python run_small_exp.py
-
-# 实验02：基线BERT训练（~13分钟，CPU）
-python train_baseline_direct.py
-
-# 实验03+04：融合模型训练 + 评测（~12分钟）
-python run_fusion_eval.py
-
-# 强攻击加测（~3分钟）
-python run_strong_attack.py
+# 整合运行：数据生成 + 模型训练 + 全面评测 + 消融实验 (~30分钟)
+python run_all.py
 ```
 
-> ⚠️ 本机 GPU 因 CUDA 上下文冲突不可用，所有实验均在 CPU 完成。详见 [`项目状态.md`](项目状态.md)。
+结果保存在 `results/` 目录：
+- `eval_results.csv` - 评测结果表
+- `run_all_log.txt` - 详细日志
+- `figures/` - 可视化图表
 
 ## 项目结构
 
 ```
 ├── demo.py                      演示脚本（加载模型直接推理）
-├── run_small_exp.py             实验01：对抗样本生成
-├── train_baseline_direct.py     实验02：基线BERT训练
-├── run_fusion_eval.py           实验03+04：融合训练+评测
-├── run_strong_attack.py         加测：强攻击对比
+├── run_all.py                   一键运行��完整实验流程
 ├── utils.py                     工具模块
-├── requirements.txt             依赖清单
+├── requirements.txt             依赖清单（CPU）
+├── requirements_new.txt         依赖清单（GPU，推荐）
 │
 ├── attack/                      攻击方（9种攻击）
 │   ├── char_delete.py           字符删除
@@ -107,15 +97,18 @@ python run_strong_attack.py
 │   └── fusion_model.py          四通道融合分类器
 │
 ├── data/
-│   ├── raw/                     原始数据
+│   ├── raw/                     原始数据（spam_data.csv）
 │   ├── adversarial/             对抗样本
 │   └── processed/               训练好的模型（.pth）
 │
-├── results/                     评测结果+图表
-├── docs/
-│   ├── 架构文档.md              完整架构设计
-│   ├── 项目状态.md              实验记录
-│   └── 实验结论.md              结果分析
+├── results/                     评测结果
+│   ├── eval_results.csv         主要评测结果
+│   ├── strong_attack_results.csv 强攻击加测
+│   ├── run_all_log.txt          详细日志
+│   └── figures/                 可视化图表
+│
+├── 项目状态.md                   实验记录与技术发现
+├── 实验结论.md                   详细结论分析
 └── README.md                    本文件
 ```
 
@@ -132,6 +125,9 @@ python run_strong_attack.py
 | G | **形近字** | 形似汉字替换 | "免费" → "免废" |
 | H | **繁简混用** | 繁简转换+拆字 | "枪" → "木仓" |
 | I | **字符乱序** | 打乱汉字顺序 | "免费领取" → "费免取领" |
+| J | **★强乱序** | 大窗口乱序 | window=7, ratio=0.8 |
+| K | **★强音近** | 高替换率音近 | replace=0.8 |
+| L | **★混合攻击** | 音近+乱序组合 | 先音近0.8，后乱序 |
 
 ## 防御方：四通道架构
 
@@ -147,36 +143,53 @@ python run_strong_attack.py
 
 ## 实验结果
 
-| 攻击类型 | 朴素 BERT | 四通道融合 |
-|---------|:---------:|:----------:|
-| 原始样本 | 0.9055 | 0.9043 |
-| A 字符删除 | 0.9779 | 0.9796 |
-| B 字符插入 | 0.9967 | 0.9967 |
-| C 跨语种同形 | 0.9510 | 0.9583 |
-| D 零宽注入 | 0.9529 | 0.9547 |
-| E 同义词 | 0.9529 | 0.9565 |
-| F 音近字 | 0.9779 | 0.9761 |
-| G 形近字 | 0.9565 | 0.9583 |
-| H 繁简混用 | 0.9583 | 0.9529 |
-| I 字符乱序 | 0.9865 | 0.9831 |
+### 基础评测（3 模型 × 13 子集，F1）
 
-> 完整评测含强攻击加测（J/K/L），详见 [`实验结论.md`](实验结论.md)。
+| 攻击类型 | 朴素 BERT | BERT+正规化 | 四通道融合 |
+|---------|:---------:|:----------:|:---------:|
+| 原始样本 | 0.9016 | 0.8644 | 0.9044 |
+| A 字符删除 | 0.9547 | 0.9565 | **0.9796** |
+| B 字符插入 | 0.9983 | 0.9831 | 0.9983 |
+| C 跨语种同形 | 0.9286 | 0.8868 | **0.9619** |
+| D 零宽注入 | 0.9305 | 0.8868 | **0.9655** |
+| E 同义词 | 0.9305 | 0.8909 | **0.9637** |
+| F 音近字 | 0.9637 | 0.9601 | **0.9796** |
+| G 形近字 | 0.9324 | 0.9071 | **0.9673** |
+| H 繁简混用 | 0.9343 | 0.9111 | **0.9619** |
+| I 字符乱序 | **0.9691** | 0.9761 | 0.9779 |
+| J ★强乱序 | 0.9708 | 0.9882 | 0.9831 |
+| K ★强音近 | 0.9726 | 0.9744 | **0.9865** |
+| L ★混合攻击 | 0.9655 | 0.9882 | 0.9813 |
+
+### 消融实验（置零法）
+
+通道贡献度分析（以原始样本为例）：
+
+| 模型变体 | F1 | Acc | 说明 |
+|---------|:--:|:---:|------|
+| 四通道融合 | 0.9044 | 0.9017 | 完整模型 |
+| -文本通道 | 0.6667 | 0.5000 | ↓ 65.4% |
+| -拼音通道 | 0.9052 | 0.9033 | ↓ 0.1% |
+| -视觉通道 | 0.9040 | 0.9033 | ↓ 0.0% |
+| -字袋通道 | 0.9076 | 0.9050 | ↑ 0.3% |
+
+**结论**：文本通道（BERT）是核心驱动力，置零后模型几乎失效；其他通道贡献有限。
 
 ## 模型下载
 
-模型文件较大（共 1.2GB），请从 [GitHub Releases](https://github.com/meijn572/text-defence/releases) 下载后放入 `data/processed/`：
+预训练模型文件可从 [GitHub Releases](https://github.com/meijn572/text-defence/releases) 下载：
 
-| 文件 | 大小 | 说明 | 必需 |
-|------|------|------|:----:|
-| `baseline_bert.pth` | 391MB | 朴素 BERT 基线 | ✅ |
-| `baseline_bert_aug.pth` | 391MB | BERT + 正规化 | — |
-| `fusion_model.pth` | 438MB | 四通道融合 | — |
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `baseline_bert.pth` | 391MB | 朴素 BERT 基线 |
+| `baseline_bert_aug.pth` | 391MB | BERT + 正规化 |
+| `fusion_model.pth` | 438MB | 四通道融合模型 |
 
-## 已知限制
+## 已知限制 & 技术细节
 
-- GPU 不可用（subprocess CUDA 上下文冲突，详见项目状态文档）
-- CSV 必须在 torch 导入前读取
-- 模型较大，建议 CPU 推理或仅用 BERT 模型
+- **GPU 支持**：当前环境支持 GPU 训练（已通过 CUDA 测试）
+- **消融实验方法**：采用置零法（zero-out ablation），存在分布偏移，结果供参考，更严谨的方法需单独训练三通道模型
+- **字体问题**：图表可能出现中文乱码（matplotlib 默认字体），不影响数据
 
 ## License
 
