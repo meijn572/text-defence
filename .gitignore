@@ -18,3 +18,8 @@ data/raw/spam_data_full.csv
 # OS
 .DS_Store
 Thumbs.db
+
+.venv/
+venv/
+__pycache__/
+*.pyc

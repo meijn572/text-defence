@@ -1,3 +1,5 @@
+gensim==4.3.3
+gradio>=4.0
 jieba==0.42.1
 matplotlib==3.11.0
 numpy==2.4.6
