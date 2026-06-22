@@ -6,10 +6,10 @@ __pycache__/
 # Models (too large, share via cloud drive)
 data/processed/*.pth
 
-# Data (sensitive/large)
-data/raw/spam_data_2k.csv
-data/raw/spam_data_small.csv
-data/raw/spam_data_full.csv
+# Data — now included in repo (small enough at ~1.8MB total)
+# data/raw/spam_data_2k.csv
+# data/raw/spam_data_small.csv
+# data/raw/spam_data_full.csv
 
 # IDE
 .vscode/
