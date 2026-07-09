@@ -49,7 +49,7 @@ from defense.text_channel import BertClassifier
 from defense.preprocess import preprocess_text
 from defense.fusion_model import FusionClassifier, create_data_loader
 from attack import ATTACK_REGISTRY
-from attack.char_shuffle import attack_shuffle
+from attack.char_shuffle import attack_adjacent_swap
 from attack.homophone_chinese import attack_homophone
 
 set_seed(42)
@@ -161,7 +161,7 @@ model_bert = train_model(
     BertClassifier(freeze_bert=False),
     create_data_loader(X_tr,   y_tr,  batch_size=4, shuffle=True),
     create_data_loader(X_val,  y_val, batch_size=8, shuffle=False),
-    epochs=1, lr=2e-5, name='朴素 BERT'
+    epochs=3, lr=2e-5, name='朴素 BERT'
 )
 torch.save(model_bert.state_dict(),
            os.path.join(BASE, 'data', 'processed', 'baseline_bert.pth'))
@@ -172,7 +172,7 @@ model_bert_aug = train_model(
     BertClassifier(freeze_bert=False),
     create_data_loader(X_tr_c,  y_tr,  batch_size=4, shuffle=True),
     create_data_loader(X_val_c, y_val, batch_size=8, shuffle=False),
-    epochs=1, lr=2e-5, name='BERT + 正规化'
+    epochs=3, lr=2e-5, name='BERT + 正规化'
 )
 torch.save(model_bert_aug.state_dict(),
            os.path.join(BASE, 'data', 'processed', 'baseline_bert_aug.pth'))
@@ -205,7 +205,7 @@ model_fusion = train_model(
     model_fusion,
     create_data_loader(X_tr,  y_tr,  batch_size=4, shuffle=True),
     create_data_loader(X_val, y_val, batch_size=4, shuffle=False),
-    epochs=2, lr=1e-4, name='四通道融合', metric='f1'
+    epochs=5, lr=1e-4, name='四通道融合', metric='f1'
 )
 torch.save({'model_state': model_fusion.state_dict()},
            os.path.join(BASE, 'data', 'processed', 'fusion_model.pth'))
@@ -222,14 +222,22 @@ print("=" * 55)
 spam_mask  = (test_df['label'] == 1) & (test_df['attack_type'].isna())
 spam_texts = test_df[spam_mask]['text'].tolist()
 
-df_J = pd.DataFrame({'text': [attack_shuffle(t, window_size=7, shuffle_ratio=0.8) for t in spam_texts],
+df_J = pd.DataFrame({'text': [attack_adjacent_swap(t, swap_ratio=0.8) for t in spam_texts],
                      'label': 1, 'attack_type': 'J', 'original_text': spam_texts})
 df_K = pd.DataFrame({'text': [attack_homophone(t, replace_ratio=0.8) for t in spam_texts],
                      'label': 1, 'attack_type': 'K', 'original_text': spam_texts})
-df_L = pd.DataFrame({'text': [attack_shuffle(attack_homophone(t, replace_ratio=0.8),
-                                              window_size=5, shuffle_ratio=0.8)
-                               for t in spam_texts],
-                     'label': 1, 'attack_type': 'L', 'original_text': spam_texts})
+df_L = pd.DataFrame({
+    'text': [
+        attack_adjacent_swap(
+            attack_homophone(t, replace_ratio=0.8),
+            swap_ratio=0.8
+        )
+        for t in spam_texts
+    ],
+    'label': 1,
+    'attack_type': 'L',
+    'original_text': spam_texts
+})
 for df_adv, fname in [(df_J, 'adv_J_strong_shuffle.csv'),
                       (df_K, 'adv_K_strong_homophone.csv'),
                       (df_L, 'adv_L_combined.csv')]:

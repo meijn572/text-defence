@@ -17,7 +17,7 @@ from .synonym_replace import attack_synonym
 from .homophone_chinese import attack_homophone
 from .homoglyph_chinese import attack_homoglyph_cn
 from .fanjian_split import attack_fanjian_mix, attack_split_char
-from .char_shuffle import attack_shuffle, attack_adjacent_swap
+from .char_shuffle import attack_adjacent_swap
 
 # 攻击函数注册表 —— 方便批量调用
 ATTACK_REGISTRY = {
@@ -29,7 +29,7 @@ ATTACK_REGISTRY = {
     'F': ('homophone_cn',      attack_homophone,         '中文音近字替换'),
     'G': ('homoglyph_cn',      attack_homoglyph_cn,      '中文形近字替换'),
     'H': ('fanjian_split',     attack_fanjian_mix,       '繁简混用'),
-    'I': ('char_shuffle',      attack_shuffle,           '字符乱序'),
+    'I': ('char_shuffle',      attack_adjacent_swap,     '字符乱序'),
 }
 
 

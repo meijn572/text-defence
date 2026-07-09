@@ -21,97 +21,132 @@ from .preprocess import preprocess_text
 
 
 class FusionClassifier(nn.Module):
-    """
-    四通道融合分类器
-
-    四种特征互补:
-      - 文本通道: 语义理解 (音近字失效时, 视觉/Bow 补上)
-      - 语音通道: 发音模式 (音近字攻击克星)
-      - 视觉通道: 字形特征 (跨语种同形字克星)
-      - 字袋通道: 字符集合 (字符乱序攻击克星)
-    """
 
     def __init__(self, freeze_channels: bool = True,
-             text_model_name: str = 'bert-base-chinese',
-             device: torch.device = None):  # 新增device参数,决定是否使用gpu
+                 text_model_name: str = 'bert-base-chinese',
+                 device: torch.device = None,
+                 proj_dim: int = 256):
         super().__init__()
-        
+
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
+
+        # ============================================================
+        # 1. four channels
+        # ============================================================
         self.text_channel = TextChannel(model_name=text_model_name, freeze_bert=freeze_channels)
         self.phonetic_channel = PhoneticChannel()
         self.visual_channel = VisualChannel(freeze_cnn=freeze_channels)
         self.bow_channel = BowChannel()
-        
+
         self.text_channel = self.text_channel.to(self.device)
         self.phonetic_channel = self.phonetic_channel.to(self.device)
         self.visual_channel = self.visual_channel.to(self.device)
         self.bow_channel = self.bow_channel.to(self.device)
-        
-        total_dim = (self.text_channel.feature_dim +     # 768
-                    self.phonetic_channel.feature_dim + # 256
-                    self.visual_channel.feature_dim +   # 512
-                    self.bow_channel.feature_dim)       # 128
-        print(f"[融合模型] 总输入维度: {total_dim}, 设备: {self.device}")
-        
-        self.fusion_head = nn.Sequential(
-            nn.Linear(total_dim, 512),
+
+        # ============================================================
+        # 2. unify feature space (IMPORTANT FIX)
+        # ============================================================
+        self.text_proj = nn.Linear(self.text_channel.feature_dim, proj_dim)
+        self.phonetic_proj = nn.Linear(self.phonetic_channel.feature_dim, proj_dim)
+        self.visual_proj = nn.Linear(self.visual_channel.feature_dim, proj_dim)
+        self.bow_proj = nn.Linear(self.bow_channel.feature_dim, proj_dim)
+
+        # ============================================================
+        # 3. gating fusion (better than concat)
+        # ============================================================
+        self.gate = nn.Sequential(
+            nn.Linear(proj_dim * 4, 128),
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 128),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(128, 2),
+            nn.Linear(128, 4),
+            nn.Softmax(dim=1)
         )
 
+        # ============================================================
+        # 4. classifier
+        # ============================================================
+        self.classifier = nn.Sequential(
+            nn.Linear(proj_dim, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 2)
+        )
+
+        print(f"[Fusion] unified dim={proj_dim}, device={self.device}")
+
+    # ============================================================
+    # forward
+    # ============================================================
     def forward(self, texts: list, return_features: bool = False, ablation: list = None):
-        """
-        前向传播
 
-        参数:
-            texts:          文本列表
-            return_features: 是否返回特征
-            ablation:       要屏蔽的通道列表 (用于消融实验)
-
-        返回:
-            logits:         (batch, 2) 分类输出
-            ablation_feats: (可选) 消融特征字典
-        """
-        # 预处理: 正规化
         clean_texts = [preprocess_text(t) for t in texts]
 
-        # 提取四通道特征
-        text_feat = self.text_channel(clean_texts)          # (batch, 768)
-        phonetic_feat = self.phonetic_channel(clean_texts)  # (batch, 256)
-        visual_feat = self.visual_channel(clean_texts)      # (batch, 512)
-        bow_feat = self.bow_channel(clean_texts)            # (batch, 128)
+        # ------------------------------------------------------------
+        # feature extraction
+        # ------------------------------------------------------------
+        text_feat = self.text_channel(clean_texts)
+        phonetic_feat = self.phonetic_channel(clean_texts)
+        visual_feat = self.visual_channel(clean_texts)
+        bow_feat = self.bow_channel(clean_texts)
 
-        # 消融实验: 将指定通道特征置零
+        # ------------------------------------------------------------
+        # projection → unified space
+        # ------------------------------------------------------------
+        text_p = self.text_proj(text_feat)
+        phonetic_p = self.phonetic_proj(phonetic_feat)
+        visual_p = self.visual_proj(visual_feat)
+        bow_p = self.bow_proj(bow_feat)
+
+        # ------------------------------------------------------------
+        # ablation: 置零 projection 输出，并在 gate 中屏蔽对应通道权重
+        # 必须在 projection 之后置零，否则 bias 项仍会泄漏
+        # ------------------------------------------------------------
+        ablation_mask = torch.ones(4, device=text_p.device)  # [text, phonetic, visual, bow]
         if ablation:
+            ablation = [ablation] if isinstance(ablation, str) else ablation
             if 'text' in ablation:
-                text_feat = torch.zeros_like(text_feat)
+                text_p = torch.zeros_like(text_p)
+                ablation_mask[0] = 0.0
             if 'phonetic' in ablation:
-                phonetic_feat = torch.zeros_like(phonetic_feat)
+                phonetic_p = torch.zeros_like(phonetic_p)
+                ablation_mask[1] = 0.0
             if 'visual' in ablation:
-                visual_feat = torch.zeros_like(visual_feat)
+                visual_p = torch.zeros_like(visual_p)
+                ablation_mask[2] = 0.0
             if 'bow' in ablation:
-                bow_feat = torch.zeros_like(bow_feat)
+                bow_p = torch.zeros_like(bow_p)
+                ablation_mask[3] = 0.0
 
-        # 拼接
-        combined = torch.cat([text_feat, phonetic_feat,
-                              visual_feat, bow_feat], dim=1)  # (batch, 1664)
+        # ------------------------------------------------------------
+        # gating weights（gate 基于置零后的特征计算，再 mask 掉消融通道）
+        # ------------------------------------------------------------
+        gate_input = torch.cat([text_p, phonetic_p, visual_p, bow_p], dim=1)
+        weights = self.gate(gate_input)  # (B, 4)
 
-        # 融合分类
-        logits = self.fusion_head(combined)  # (batch, 2)
+        # 消融通道权重强制为 0，其余通道重新归一化
+        weights = weights * ablation_mask.unsqueeze(0)
+        weight_sum = weights.sum(dim=1, keepdim=True).clamp(min=1e-8)
+        weights = weights / weight_sum
+
+        # weighted fusion
+        fused = (
+            weights[:, 0:1] * text_p +
+            weights[:, 1:2] * phonetic_p +
+            weights[:, 2:3] * visual_p +
+            weights[:, 3:4] * bow_p
+        )
+
+        logits = self.classifier(fused)
 
         if return_features:
             return logits, {
-                'text': text_feat,
-                'phonetic': phonetic_feat,
-                'visual': visual_feat,
-                'bow': bow_feat,
-                'combined': combined,
+                "text": text_p,
+                "phonetic": phonetic_p,
+                "visual": visual_p,
+                "bow": bow_p,
+                "weights": weights,
+                "fused": fused
             }
+
         return logits
 
     def predict(self, texts: list) -> torch.Tensor:

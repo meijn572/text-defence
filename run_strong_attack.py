@@ -131,9 +131,9 @@ print(f"  消融实验")
 print(f"{'='*50}")
 for channel in ['text', 'phonetic', 'visual', 'bow']:
     print(f"\n  四通道融合 - 消融: 置零 {channel} 通道")
-    model.eval()
+    model_fusion.eval()
     for sname, (txts, lbs) in subsets.items():
-        f1, acc = eval_model(model_fusion, txts, lbs, ablation=channel)
+        f1, acc = eval_model(model_fusion, txts, lbs, ablation=[channel])
         results.append({'model': f"四通道融合: N{channel}", 'subset': sname, 'f1': f1, 'accuracy': acc})
         marker = ''
         if 'J' in sname or 'K' in sname or 'L' in sname:

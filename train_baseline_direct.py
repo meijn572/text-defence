@@ -23,6 +23,7 @@ try:
     import torch.nn as nn
     import numpy as np
     from sklearn.model_selection import train_test_split
+    from sklearn.metrics import f1_score
     from tqdm import tqdm
     print("  Basic imports OK", flush=True)
 
@@ -43,7 +44,7 @@ try:
         model = model.to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
         criterion = nn.CrossEntropyLoss()
-        best_acc = 0.0
+        best_f1 = 0.0
         best_state = None
 
         print(f"\n{'='*50}")
@@ -82,14 +83,17 @@ try:
 
             avg_val_loss = val_loss / len(val_loader)
             val_acc = sum(1 for p, l in zip(all_preds, all_labels) if p == l) / len(all_labels)
-            print(f"  Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Acc: {val_acc:.4f}")
+            val_f1 = f1_score(all_labels, all_preds, zero_division=0)
+            marker = ' ★' if val_f1 > best_f1 else ''
+            print(f"  Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Acc: {val_acc:.4f} | F1: {val_f1:.4f}{marker}")
 
-            if val_acc > best_acc:
-                best_acc = val_acc
+            if val_f1 > best_f1:
+                best_f1 = val_f1
                 best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
         if best_state:
             model.load_state_dict(best_state)
+        print(f"  最优验证 F1: {best_f1:.4f}")
         return model
 
     # ================================================================
@@ -97,7 +101,7 @@ try:
     # ================================================================
     set_seed(42)
     print("=" * 60, flush=True)
-    print("  实验 02: 训练基线模型 (CPU)", flush=True)
+    print(f"  实验 02: 训练基线模型 ({DEVICE})", flush=True)
     print(f"  训练数据: {len(train_df)} 条", flush=True)
     print(f"    正常: {(train_df['label']==0).sum()}, 垃圾: {(train_df['label']==1).sum()}", flush=True)
     print("=" * 60, flush=True)
@@ -127,7 +131,7 @@ try:
     train_loader1 = create_data_loader(X_tr, y_tr, batch_size=4, shuffle=True)
     val_loader1 = create_data_loader(X_val, y_val, batch_size=8, shuffle=False)
     model1 = train_model(model1, train_loader1, val_loader1,
-                         epochs=1, lr=2e-5, model_name="BERT基线", device=DEVICE)
+                         epochs=3, lr=2e-5, model_name="BERT基线", device=DEVICE)
 
     save_path1 = os.path.join(BASE, 'data', 'processed', 'baseline_bert.pth')
     os.makedirs(os.path.dirname(save_path1), exist_ok=True)
@@ -140,7 +144,7 @@ try:
     train_loader2 = create_data_loader(X_tr_clean, y_tr, batch_size=4, shuffle=True)
     val_loader2 = create_data_loader(X_val_clean, y_val, batch_size=8, shuffle=False)
     model2 = train_model(model2, train_loader2, val_loader2,
-                         epochs=1, lr=2e-5, model_name="BERT+正规化+增强", device=DEVICE)
+                         epochs=3, lr=2e-5, model_name="BERT+正规化+增强", device=DEVICE)
 
     save_path2 = os.path.join(BASE, 'data', 'processed', 'baseline_bert_aug.pth')
     torch.save(model2.state_dict(), save_path2)

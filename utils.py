@@ -56,7 +56,7 @@ def load_raw_data(filepath: str = None) -> pd.DataFrame:
     如果文件不存在，自动生成示例数据集用于测试
     """
     if filepath is None:
-        filepath = os.path.join(DATA_RAW, 'spam_data.csv')
+        filepath = os.path.join(DATA_RAW, 'spam_data_full.csv')
 
     if os.path.exists(filepath):
         df = pd.read_csv(filepath)
