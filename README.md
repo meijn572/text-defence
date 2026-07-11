@@ -9,11 +9,12 @@
 
 - **攻击方**：9 种中文特有对抗攻击（音近字、形近字、繁简混用、字符乱序等）
 - **防御方**：四通道融合检测架构（BERT + 拼音CNN + 视觉ResNet + 字袋BoW）
-- **实验验证**：3 模型 × 12 攻击类型的全面对比评测
+- **实验验证**：3 模型 × 13 攻击类型的全面对比评测（含强攻击加测）
+- **消融实验**：零点置零法评估各通道贡献度
 
 ### 核心发现
 
-**预训练 BERT 对中文对抗扰动具有意外的高鲁棒性**——12 种攻击下 F1 均 ≥ 0.95。四通道融合设计合理，但在当前规模下未体现显著优势。
+基于 `eval_log.txt` 的最新评测，三类深度模型在 13 个子集上整体保持高鲁棒性（F1 均在 0.95 左右或以上）。四通道融合在多数子集上略优于朴素 BERT，但提升幅度有限；"出现新攻击后性能严重退化" 的现象在当前评测中未出现。
 
 详见 [`实验结论.md`](实验结论.md)
 
@@ -25,6 +26,7 @@
 Python >= 3.8  （推荐 3.10+）
 torch >= 2.0
 transformers >= 4.30
+CUDA 环境（可选，支持 GPU 加速）
 ```
 
 ### 安装
@@ -32,12 +34,12 @@ transformers >= 4.30
 ```bash
 git clone git@github.com:meijn572/text-defence.git
 cd text-defence
-pip install -r requirements.txt
+pip install -r requirements_new.txt
 ```
 
-### ⚠️ 下载模型文件（必须）
+### ⚠️ 下载模型文件（可选）
 
-由于模型文件较大（~1.2GB），不在 Git 仓库中。请从 [Release 页面](https://github.com/meijn572/text-defence/releases) 下载 `baseline_bert.pth` 和 `fusion_model.pth`，放入 `data/processed/` 目录：
+由于模型文件较大（~1.2GB），可从 [Release 页面](https://github.com/meijn572/text-defence/releases) 下载 `baseline_bert.pth` 等文件，放入：
 
 ```
 data/processed/
@@ -46,46 +48,106 @@ data/processed/
 └── fusion_model.pth        (438MB，可选)
 ```
 
-> 最少只需 `baseline_bert.pth`（391MB）即可运行演示。
-
 ### 演示（加载模型，直接推理）
 
 ```bash
 python demo.py
 ```
 
-输出：10 个测试子集的 F1 评测 + 5 条单文本双模型推理对比。
+输出：13 个测试子集的 F1 评测 + 单文本多模型推理对比。
 
-加载已训练模型（`data/processed/*.pth`），在 3,300 条测试集上评测并展示单条推理效果。
-
-### 完整实验流程
+### Gradio 前端展示（CPU/GPU 自适应）
 
 ```bash
-# 实验01：对抗样本生成（~30秒）
-python run_small_exp.py
-
-# 实验02：基线BERT训练（~13分钟，CPU）
-python train_baseline_direct.py
-
-# 实验03+04：融合模型训练 + 评测（~12分钟）
-python run_fusion_eval.py
-
-# 强攻击加测（~3分钟）
-python run_strong_attack.py
+python app.py
 ```
 
-> ⚠️ 本机 GPU 因 CUDA 上下文冲突不可用，所有实验均在 CPU 完成。详见 [`项目状态.md`](项目状态.md)。
+如果遇到 HuggingFace 下载或 SSL 问题，可先设置镜像源：
+
+```powershell
+$env:HF_ENDPOINT="https://hf-mirror.com"
+python app.py
+```
+
+启动后访问：
+
+```text
+http://127.0.0.1:7860
+```
+
+前端会自动检测运行设备：
+
+- 若 `torch.cuda.is_available()` 为 `True`，自动使用 GPU；
+- 否则回退到 CPU。
+
+页面功能包括：
+
+- 系统状态：显示当前设备、PyTorch/CUDA 信息和模型加载状态
+- 短信检测：输入单条短信，展示 BERT 与四通道融合模型预测概率
+- 微信式演示：用聊天气泡模拟短信检测助手，支持直接检测和攻击后检测
+- 对抗攻击演示：选择攻击方式，生成攻击文本，并比较攻击前后预测变化
+- 实验结果：展示 `results/` 中的深度模型评测、经典基准和内容类型分析结果表
+
+### 完整实验流程（一键运行）
+
+```bash
+# 整合运行：数据生成 + 模型训练 + 全面评测 + 消融实验 (~30分钟)
+python run_all.py
+```
+
+结果保存在 `results/` 目录：
+- `eval_results.csv` - 评测结果表
+- `run_all_log.txt` - 详细日志
+- `figures/` - 可视化图表
+
+### 经典基准算法复现实验
+
+项目额外提供了 CPU 友好的经典垃圾文本检测基准复现实验：
+
+```bash
+python classic_baselines.py
+```
+
+该脚本默认使用：
+
+```text
+data/adversarial/train.csv
+data/adversarial/test_full.csv
+```
+
+输出结果保存在：
+
+```text
+results/classic_baseline_results.csv
+results/classic_baseline_f1_pivot.csv
+```
+
+当前支持的基准算法：
+
+| 方法 | 说明 |
+|------|------|
+| GAS-lite | 基于字符共现图和风险传播的轻量图结构baseline |
+| Word2Vec-w+LR | jieba 分词 + 词级 Word2Vec + Logistic Regression |
+| Word2Vec-c+LR | 字符级 Word2Vec + Logistic Regression |
+| Word2Vec-c+GBDT | 字符级 Word2Vec + Gradient Boosting Decision Tree |
+| Doc2Vec-c+GBDT | 字符级 Doc2Vec + Gradient Boosting Decision Tree |
+
+复现实验依赖 `gensim`、`jieba`、`scikit-learn`、`scipy`、`numpy`、`pandas`，已写入依赖清单。
+
+注意：`GAS-lite` 是 GAS 思想的 CPU 友好近似实现，并非完整 GCN 版本；`Word2Vec` / `Doc2Vec` 系列为便于 CPU 复现，使用 IDF 加权池化生成句子向量，并非完整自注意力池化版本。
 
 ## 项目结构
 
 ```
+├── app.py                       Gradio 前端展示（CPU/GPU 自适应）
 ├── demo.py                      演示脚本（加载模型直接推理）
-├── run_small_exp.py             实验01：对抗样本生成
-├── train_baseline_direct.py     实验02：基线BERT训练
-├── run_fusion_eval.py           实验03+04：融合训练+评测
-├── run_strong_attack.py         加测：强攻击对比
+├── run_all.py                   一键运行完整实验流程
+├── classic_baselines.py          经典基准算法复现实验
+├── content_type_analysis.py      垃圾短信内容类型弱监督分析
+├── content_type_model_eval.py    按内容类型评估 BERT/Fusion 召回率
 ├── utils.py                     工具模块
-├── requirements.txt             依赖清单
+├── requirements.txt             依赖清单（CPU）
+├── requirements_new.txt         依赖清单（GPU，推荐）
 │
 ├── attack/                      攻击方（9种攻击）
 │   ├── char_delete.py           字符删除
@@ -107,16 +169,122 @@ python run_strong_attack.py
 │   └── fusion_model.py          四通道融合分类器
 │
 ├── data/
-│   ├── raw/                     原始数据
+│   ├── raw/                     原始数据（spam_data.csv）
 │   ├── adversarial/             对抗样本
 │   └── processed/               训练好的模型（.pth）
 │
-├── results/                     评测结果+图表
-├── docs/
-│   ├── 架构文档.md              完整架构设计
-│   ├── 项目状态.md              实验记录
-│   └── 实验结论.md              结果分析
+├── results/                     评测结果
+│   ├── eval_results.csv         主要评测结果
+│   ├── strong_attack_results.csv 强攻击加测
+│   ├── run_all_log.txt          详细日志
+│   └── figures/                 可视化图表
+│
+├── 项目状态.md                   实验记录与技术发现
+├── 实验结论.md                   详细结论分析
 └── README.md                    本文件
+```
+
+## 算法框架
+
+### 系统总体流程
+
+```mermaid
+flowchart TD
+    A[输入中文短信 x] --> B{实验模式}
+    B -->|原始检测| C[原始文本]
+    B -->|对抗评测| D[攻击模块 A-L]
+    D --> E[对抗文本 x_adv]
+    C --> F[防御预处理]
+    E --> F
+    F --> G[中文深度正规化<br/>Unicode / 零宽字符 / 繁简转换]
+    G --> H[四通道特征提取]
+    H --> H1[BERT 文本通道<br/>输出 768 维语义特征]
+    H --> H2[拼音 CNN 通道<br/>输出 256 维语音特征]
+    H --> H3[视觉 ResNet 通道<br/>输出 512 维字形特征]
+    H --> H4[BoW 字袋通道<br/>输出 128 维字符集合特征]
+    H1 --> I[特征拼接<br/>768 + 256 + 512 + 128 = 1664 维]
+    H2 --> I
+    H3 --> I
+    H4 --> I
+    I --> J[MLP 融合分类器]
+    J --> K[输出：正常/垃圾概率]
+    K --> L[评测指标<br/>Acc / Precision / Recall / F1]
+```
+
+### 数据集
+##### 原始数据集 spam_data_full.csv 是**两个真实短信语料的混合**：
+
+
+| 语言类型 | 数量 | 来源 |
+|---------|:----:|------|
+| **纯英文** | 5,229 条 | **SMS Spam Collection（UCI 经典数据集）** |
+| **纯中文** | 3,926 条 | **中文垃圾短信语料**（真实采集的营销/诈骗短信） |
+| **中英混合** | 3,757 条 | 两者混合（如含英文链接的中文促销短信） |
+| **总计** | **12,935 条** | |
+
+
+
+- 2,000 条的 spam_data_2k.csv 是从中分层采样的均衡子集（1:1 正常/垃圾）
+
+
+##### 整个数据流程是**先分割再增强，最后用于训练和测试**。具体流程如下：
+
+```mermaid
+flowchart TD
+    A["原始数据<br/>spam_data_2k.csv<br/>2,000条 (正常1,000 + 垃圾1,000)"] --> B["7:3 划分"]
+    B --> C["训练集 (~1,400条)"]
+    B --> D["测试集 (~600条)"]
+    
+    C --> C1["对垃圾样本做 A/B 两种攻击增强"]
+    C1 --> C2["train.csv<br/>2,800条<br/>(1,400原始 + A/B增强)"]
+    
+    D --> D1["对垃圾样本做全部 9 种攻击 A~I"]
+    D1 --> D2["test_full.csv<br/>3,300条<br/>(600原始 + 300×9对抗)"]
+    
+    C2 --> E["实验02: 训练baselineBERT"]
+    C2 --> F["实验03: 训练融合模型"]
+    D2 --> G["实验04: 评测对比"]
+```
+
+关键点：
+
+1. **先分割**：原始 2,000 条按 7:3 分层划分为训练集和测试集，确保原始样本不重叠
+2. **只攻击垃圾样本**：仅对 `label=1`（垃圾短信）施加对抗变换，正常短信保持不变
+3. **训练集增强有限**：只用 A（字符删除）和 B（字符插入）两种攻击增强，避免训练集过大
+4. **测试集覆盖全面**：用全部 9 种攻击 A~I 各生成 300 条对抗样本，用于全面评测模型的鲁棒性
+5. **保存为 CSV**：增强结果写入 `train.csv` / `test_full.csv`，后续训练和评测直接读取这些文件
+
+
+### 模块输入输出
+
+| 模块 | 输入 | 输出 | 说明 |
+|------|------|------|------|
+| 攻击模块 | 原始短信文本 | 对抗短信文本 | 生成 A-L 类扰动样本，用于鲁棒性评测 |
+| 防御预处理 | 原始/对抗文本 | 正规化文本 | 处理 Unicode、零宽字符、繁简混用等异常 |
+| BERT 文本通道 | 正规化文本 | 768 维语义向量 | 捕捉上下文语义，是融合模型核心通道 |
+| 拼音 CNN 通道 | 文本拼音序列 | 256 维语音向量 | 面向音近字攻击设计 |
+| 视觉 ResNet 通道 | 文本渲染图像 | 512 维字形向量 | 面向形近字、同形字符攻击设计 |
+| BoW 字袋通道 | 字符集合 | 128 维字符特征 | 面向字符乱序和关键词残留设计 |
+| 融合分类器 | 1664 维拼接特征 | 正常/垃圾概率 | MLP 二分类输出 |
+| 评测模块 | 预测结果与标签 | Acc / Precision / Recall / F1 | 对不同攻击子集进行横向比较 |
+
+### 基准算法对比流程
+
+```mermaid
+flowchart LR
+    A[训练集 train.csv] --> B1[GAS-lite<br/>字符共现图 + 风险传播]
+    A --> B2[Word2Vec-w+LR<br/>词级向量 + LR]
+    A --> B3[Word2Vec-c+LR<br/>字符向量 + LR]
+    A --> B4[Word2Vec-c+GBDT<br/>字符向量 + GBDT]
+    A --> B5[Doc2Vec-c+GBDT<br/>句向量 + GBDT]
+    B1 --> C[测试集 test_full.csv]
+    B2 --> C
+    B3 --> C
+    B4 --> C
+    B5 --> C
+    C --> D[按 attack_type 输出指标]
+    D --> E[results/classic_baseline_results.csv]
+    D --> F[results/classic_baseline_f1_pivot.csv]
 ```
 
 ## 攻击方
@@ -132,6 +300,9 @@ python run_strong_attack.py
 | G | **形近字** | 形似汉字替换 | "免费" → "免废" |
 | H | **繁简混用** | 繁简转换+拆字 | "枪" → "木仓" |
 | I | **字符乱序** | 打乱汉字顺序 | "免费领取" → "费免取领" |
+| J | **★强乱序** | 大窗口乱序 | window=7, ratio=0.8 |
+| K | **★强音近** | 高替换率音近 | replace=0.8 |
+| L | **★混合攻击** | 音近+乱序组合 | 先音近0.8，后乱序 |
 
 ## 防御方：四通道架构
 
@@ -147,36 +318,103 @@ python run_strong_attack.py
 
 ## 实验结果
 
-| 攻击类型 | 朴素 BERT | 四通道融合 |
-|---------|:---------:|:----------:|
-| 原始样本 | 0.9055 | 0.9043 |
-| A 字符删除 | 0.9779 | 0.9796 |
-| B 字符插入 | 0.9967 | 0.9967 |
-| C 跨语种同形 | 0.9510 | 0.9583 |
-| D 零宽注入 | 0.9529 | 0.9547 |
-| E 同义词 | 0.9529 | 0.9565 |
-| F 音近字 | 0.9779 | 0.9761 |
-| G 形近字 | 0.9565 | 0.9583 |
-| H 繁简混用 | 0.9583 | 0.9529 |
-| I 字符乱序 | 0.9865 | 0.9831 |
+### 基础评测（3 模型 × 13 子集，F1，来源：`eval_log.txt`）
 
-> 完整评测含强攻击加测（J/K/L），详见 [`实验结论.md`](实验结论.md)。
+| 攻击类型 | 朴素 BERT | BERT+正规化 | 四通道融合 |
+|---------|:---------:|:----------:|:---------:|
+| 原始样本 | 0.9618 | 0.9534 | 0.9626 |
+| A 字符删除 | 0.9661 | 0.9602 | 0.9669 |
+| B 字符插入 | 0.9755 | 0.9777 | 0.9786 |
+| C 跨语种同形 | 0.9579 | 0.9537 | 0.9616 |
+| D 零宽注入 | 0.9618 | 0.9534 | 0.9626 |
+| E 同义词 | 0.9615 | 0.9527 | 0.9626 |
+| F 音近字 | 0.9677 | 0.9682 | 0.9711 |
+| G 形近字 | 0.9628 | 0.9554 | 0.9642 |
+| H 繁简混用 | 0.9645 | 0.9537 | 0.9626 |
+| I 字符乱序 | 0.9658 | 0.9679 | 0.9679 |
+| J ★强乱序 | 0.9638 | 0.9689 | 0.9665 |
+| K ★强音近 | 0.9687 | 0.9715 | 0.9711 |
+| L ★混合攻击 | 0.9651 | 0.9741 | 0.9682 |
+
+三模型在 13 子集平均 F1（由上表计算）：
+
+- 朴素 BERT：**0.9648**
+- BERT + 正规化：**0.9624**
+- 四通道融合：**0.9667**
+
+### 经典基准算法复现结果（CPU 友好版）
+
+| 模型 | ALL F1 | Original F1 | 说明 |
+|------|:------:|:-----------:|------|
+| GAS-lite | 0.8866 | 0.7477 | 字符共现图 + 风险传播，非完整 GCN |
+| Word2Vec-w+LR | 0.9642 | 0.8929 | 词级 Word2Vec + LR |
+| Word2Vec-c+LR | 0.9003 | 0.8299 | 字符级 Word2Vec + LR |
+| Word2Vec-c+GBDT | **0.9753** | 0.8718 | 字符级 Word2Vec + GBDT |
+| Doc2Vec-c+GBDT | 0.8525 | 0.6783 | 字符级 Doc2Vec + GBDT |
+
+完整分攻击类型结果见 `results/classic_baseline_f1_pivot.csv`。当前测试集标签分布不均衡（正常 300 / 垃圾 3000），且攻击子集主要由垃圾样本构成，因此攻击集高 F1 需要结合 Precision、Recall 和后续 ASR 指标谨慎解释。
+
+### 垃圾短信内容类型弱监督分析
+
+项目新增 `content_type_analysis.py`，通过关键词规则对垃圾短信进行粗粒度内容类型划分，用于报告分析和前端展示：
+
+```bash
+python content_type_analysis.py
+```
+
+输出文件：
+
+- `results/content_type_distribution.csv`
+- `results/content_type_attack_distribution.csv`
+- `results/content_type_examples.csv`
+
+如果需要进一步分析不同内容类型上的模型提升，可运行：
+
+```bash
+python content_type_model_eval.py
+```
+
+该脚本会加载 `baseline_bert.pth` 与 `fusion_model.pth`，按内容类型统计垃圾短信召回率，并输出：
+
+- `results/content_type_model_recall.csv`
+- `results/content_type_model_predictions.csv`
+
+CPU 环境下脚本默认每个内容类型最多抽样 30 条进行快速评估；GPU 环境下可进行全量评估。核心指标为 `BERT_recall`、`Fusion_recall` 和 `Fusion_minus_BERT`，用于分析四通道融合模型在不同垃圾内容类型上的提升。
+
+当前弱监督划分结果显示，测试集中垃圾短信主要集中在以下类型：
+
+| 内容类型 | 样本数 | 占垃圾样本比例 |
+|---------|:------:|:--------------:|
+| 钓鱼链接 | 1100 | 36.67% |
+| 营销广告 | 750 | 25.00% |
+| 中奖福利 | 620 | 20.67% |
+| 其他垃圾 | 350 | 11.67% |
+| 金融贷款 | 150 | 5.00% |
+| 证件发票 | 30 | 1.00% |
+
+说明：该划分基于关键词规则，不等同于人工精标多分类标签；其主要作用是辅助分析不同垃圾文本内容类型和失败案例。
+
+### 消融实验（置零法）
+
+本轮文档以 `eval_log.txt` 为主更新依据；消融完整数值请以 `results/eval_results.csv` 为准。
+
+当前可复现实验中，文本通道置零会显著影响原始样本表现，其他辅助通道置零影响较小，整体趋势与“文本通道主导”结论一致。
 
 ## 模型下载
 
-模型文件较大（共 1.2GB），请从 [GitHub Releases](https://github.com/meijn572/text-defence/releases) 下载后放入 `data/processed/`：
+预训练模型文件可从 [GitHub Releases](https://github.com/meijn572/text-defence/releases) 下载：
 
-| 文件 | 大小 | 说明 | 必需 |
-|------|------|------|:----:|
-| `baseline_bert.pth` | 391MB | 朴素 BERT 基线 | ✅ |
-| `baseline_bert_aug.pth` | 391MB | BERT + 正规化 | — |
-| `fusion_model.pth` | 438MB | 四通道融合 | — |
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `baseline_bert.pth` | 391MB | 朴素 BERT baseline |
+| `baseline_bert_aug.pth` | 391MB | BERT + 正规化 |
+| `fusion_model.pth` | 438MB | 四通道融合模型 |
 
-## 已知限制
+## 已知限制 & 技术细节
 
-- GPU 不可用（subprocess CUDA 上下文冲突，详见项目状态文档）
-- CSV 必须在 torch 导入前读取
-- 模型较大，建议 CPU 推理或仅用 BERT 模型
+- **GPU 支持**：当前环境支持 GPU 训练（已通过 CUDA 测试）
+- **消融实验方法**：采用置零法（zero-out ablation），存在分布偏移，结果供参考，更严谨的方法需单独训练三通道模型
+- **字体问题**：图表可能出现中文乱码（matplotlib 默认字体），不影响数据
 
 ## License
 

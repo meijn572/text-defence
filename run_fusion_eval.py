@@ -2,7 +2,7 @@
 """实验03+04: 融合模型训练 + 评测 (CSV先于torch加载)"""
 import sys, os, time, traceback
 
-BASE = r'd:\3_second\big_data\work\text-defense'
+BASE = os.path.dirname(os.path.abspath(__file__))  # 自动获取路径
 os.chdir(BASE)
 sys.path.insert(0, BASE)
 
@@ -34,7 +34,7 @@ from defense.text_channel import BertClassifier
 from defense.fusion_model import FusionClassifier, create_data_loader
 
 set_seed(42)
-DEV = torch.device('cpu')
+DEV = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # ========================================
 # 实验03: 训练融合模型
@@ -87,8 +87,8 @@ for epoch in range(2):
         for bt, bl in val_loader:
             bl = bl.to(DEV)
             logits = model(bt)
-            ap.extend(torch.argmax(logits, dim=1).tolist())
-            al.extend(bl.tolist())
+            ap.extend(torch.argmax(logits, dim=1).cpu().tolist())
+            al.extend(bl.cpu().tolist())
     val_f1 = f1_score(al, ap, zero_division=0)
     val_acc = sum(1 for a,b in zip(ap,al) if a==b)/len(al)
     print(f"  Epoch {epoch+1}/2 | TL={train_loss:.4f} | VA={val_acc:.4f} | VF1={val_f1:.4f} | T={time.time()-t0:.0f}s")
@@ -110,21 +110,45 @@ print("\n" + "=" * 60)
 print("  实验 04: 全面评测与消融实验")
 print("=" * 60)
 
-def eval_model(model, texts, labels):
+def eval_model(model, texts, labels, ablation=False):
+    """
+    ablation=False: 正常评测，返回 {'f1': ..., 'accuracy': ...}
+    ablation=True:  消融评测，返回 {'text': {...}, ...}
+    """
     loader = create_data_loader(texts, labels, batch_size=16, shuffle=False)
-    model.eval(); ap, al = [], []
-    with torch.no_grad():
-        for bt, bl in loader:
-            if isinstance(model, BertClassifier):
-                logits = model(bt)
-            else:
-                logits = model(bt)
-            ap.extend(torch.argmax(logits, dim=1).cpu().tolist())
-            al.extend(bl.cpu().tolist())
-    return {
-        'f1': f1_score(al, ap, zero_division=0),
-        'accuracy': sum(1 for a,b in zip(ap,al) if a==b)/len(al)
-    }
+
+    def run_inference(ablation_channel=None):
+        """对整个数据集跑一次推理，返回 (preds, labels)"""
+        all_preds, all_labels = [], []
+        model.eval()
+        with torch.no_grad():
+            for bt, bl in loader:
+                if isinstance(model, FusionClassifier) and ablation_channel:
+                    logits = model(bt, ablation=ablation_channel)
+                else:
+                    logits = model(bt)
+                all_preds.extend(torch.argmax(logits, dim=1).cpu().tolist())
+                all_labels.extend(bl.cpu().tolist())
+        return all_preds, all_labels
+
+    def calc_metrics(preds, labels):
+        return {
+            'f1': f1_score(labels, preds, zero_division=0),
+            'accuracy': sum(1 for a, b in zip(preds, labels) if a == b) / len(labels)
+        }
+
+    if not ablation:
+        preds, lbls = run_inference()
+        return calc_metrics(preds, lbls)
+
+    results = {}
+
+    # 逐通道置零
+    for channel in ['text', 'phonetic', 'visual', 'bow']:
+        preds, lbls = run_inference(ablation_channel=[channel])
+        results[channel] = calc_metrics(preds, lbls)
+
+    return results
 
 # 构建测试子集
 subsets = {}
@@ -168,6 +192,17 @@ for mname, mdl in models.items():
         m = eval_model(mdl, txts, lbs)
         results.append({'model': mname, 'subset': sname, **m})
         print(f"    {sname:12s} | F1={m['f1']:.4f}  Acc={m['accuracy']:.4f}")
+
+# 消融实验
+print("\n消融实验: 四通道融合模型逐通道置零\n")
+fusion_model = models.get('四通道融合 (本文)')
+if fusion_model:
+    for sname, (txts, lbs) in subsets.items():
+        abl = eval_model(fusion_model, txts, lbs, ablation=True)
+        for channel in ['text', 'phonetic', 'visual', 'bow']:
+            m = abl[channel]
+            results.append({'model': f'四通道融合 (消融) -N{channel}', 'subset': sname, **m})
+            print(f"    {sname:12s} -{channel:8s} | F1={m['f1']:.4f}  Acc={m['accuracy']:.4f}")
 
 rdf = pd.DataFrame(results)
 rdf.to_csv(os.path.join(RESULTS_DIR, 'eval_results.csv'), index=False)

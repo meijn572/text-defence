@@ -56,7 +56,7 @@ def main():
     # ---- 运行实验 ----
     ok = True
     ok = run_step('experiments/01_generate_adv.py', '实验01: 生成对抗样本') and ok
-    ok = run_step('experiments/02_train_baseline.py', '实验02: 训练基线BERT') and ok
+    ok = run_step('experiments/02_train_baseline.py', '实验02: 训练baselineBERT') and ok
     ok = run_step('experiments/03_train_fusion.py', '实验03: 训练融合模型(CPU)') and ok
     ok = run_step('experiments/04_evaluate.py', '实验04: 评测+可视化') and ok
 

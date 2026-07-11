@@ -9,6 +9,7 @@
 """
 
 import random
+from functools import lru_cache
 
 # 拆字映射表 —— 将合体字拆为两个常见部件
 SPLIT_CHAR_MAP = {
@@ -27,6 +28,13 @@ SPLIT_CHAR_MAP = {
     '甭': '不用',
     '覅': '勿要',
 }
+
+
+@lru_cache(maxsize=1)
+def _get_opencc_converter():
+    """延迟创建并复用简转繁转换器。"""
+    from opencc import OpenCC
+    return OpenCC('s2t')
 
 
 def attack_fanjian_mix(text: str, convert_ratio: float = 0.5) -> str:
@@ -50,8 +58,7 @@ def attack_fanjian_mix(text: str, convert_ratio: float = 0.5) -> str:
         return text
 
     try:
-        from opencc import OpenCC
-        cc = OpenCC('s2t')  # 简体 → 繁体
+        cc = _get_opencc_converter()
     except ImportError:
         print("[WARN] OpenCC 未安装, 使用内置简繁映射表")
         return _fallback_fanjian(text, convert_ratio)

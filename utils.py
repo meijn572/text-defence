@@ -10,6 +10,7 @@ import random
 import numpy as np
 import pandas as pd
 from collections import defaultdict
+from functools import lru_cache
 from typing import List, Dict, Tuple, Optional
 
 
@@ -38,7 +39,7 @@ np.random.seed(SEED)
 
 # 设备选择（用 CPU 避免脚本模式下的 CUDA 驱动兼容性问题）
 import torch
-_USE_GPU = torch.cuda.is_available() and os.environ.get('USE_GPU', '0') == '1'
+_USE_GPU = torch.cuda.is_available() #  and os.environ.get('USE_GPU', '0') == '1'  # TODO:注意USE_GPU参数，可能需要改
 DEVICE = torch.device('cuda' if _USE_GPU else 'cpu')
 print(f"[INFO] 使用设备: {DEVICE} (GPU={'ON' if _USE_GPU else 'OFF'})")
 
@@ -56,7 +57,7 @@ def load_raw_data(filepath: str = None) -> pd.DataFrame:
     如果文件不存在，自动生成示例数据集用于测试
     """
     if filepath is None:
-        filepath = os.path.join(DATA_RAW, 'spam_data.csv')
+        filepath = os.path.join(DATA_RAW, 'spam_data_full.csv')
 
     if os.path.exists(filepath):
         df = pd.read_csv(filepath)
@@ -252,6 +253,7 @@ def build_homophone_map() -> Dict[str, List[str]]:
     return homophone_map
 
 
+@lru_cache(maxsize=1)
 def load_homophone_map() -> Dict[str, List[str]]:
     """加载音近字映射表，如果不存在则自动构建"""
     path = os.path.join(DATA_DICT, 'homophone_map.json')

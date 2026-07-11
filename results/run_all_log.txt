@@ -1,0 +1,339 @@
+[数据] 训练集: 2800 条
+[数据] 测试集: 3300 条
+[INFO] 使用设备: cuda (GPU=ON)
+[视觉通道] 可用中文字体: 5 个
+
+============================================================
+  实验 03: 训练四通道融合模型
+============================================================
+训练: 2520 / 验证: 280
+[文本通道] 加载 BERT 模型: bert-base-chinese
+[视觉通道] 加载 ResNet18 预训练模型
+[字袋通道] 输入维度: 1260, 输出维度: 128
+[融合模型] 总输入维度: 1664, 设备: cuda
+BERT权重已加载 (199 keys)
+可训练参数: 12,625,474
+Epoch 1/2: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 630/630 [01:11<00:00,  8.86it/s, loss=0.0125]
+  Epoch 1/2 | TL=0.0807 | VA=0.9571 | VF1=0.9717 | T=78s
+Epoch 2/2: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 630/630 [01:09<00:00,  9.06it/s, loss=0.0005]
+  Epoch 2/2 | TL=0.0597 | VA=0.9536 | VF1=0.9696 | T=154s
+✅ 融合模型已保存 (best F1=0.9717)
+
+============================================================
+  实验 04: 全面评测与消融实验
+============================================================
+[文本通道] 加载 BERT 模型: bert-base-chinese
+[模型] 朴素 BERT 加载成功
+[文本通道] 加载 BERT 模型: bert-base-chinese
+[SKIP] BERT + 正规化: 模型文件不存在
+[文本通道] 加载 BERT 模型: bert-base-chinese
+[文本通道] BERT 参数已冻结
+[视觉通道] 加载 ResNet18 预训练模型
+[视觉通道] ResNet 参数已冻结
+[字袋通道] 输入维度: 1260, 输出维度: 128
+[融合模型] 总输入维度: 1664, 设备: cuda
+[模型] 四通道融合 (本文) 加载成功
+
+评测: 2 模型 x 10 子集
+
+  朴素 BERT:
+    原始样本         | F1=0.9055  Acc=0.9050
+    对抗_A         | F1=0.9779  Acc=0.9567
+    对抗_B         | F1=0.9967  Acc=0.9933
+    对抗_C         | F1=0.9510  Acc=0.9067
+    对抗_D         | F1=0.9529  Acc=0.9100
+    对抗_E         | F1=0.9529  Acc=0.9100
+    对抗_F         | F1=0.9779  Acc=0.9567
+    对抗_G         | F1=0.9565  Acc=0.9167
+    对抗_H         | F1=0.9583  Acc=0.9200
+    对抗_I         | F1=0.9865  Acc=0.9733
+  四通道融合 (本文):
+    原始样本         | F1=0.9049  Acc=0.9033
+    对抗_A         | F1=0.9779  Acc=0.9567
+    对抗_B         | F1=0.9967  Acc=0.9933
+    对抗_C         | F1=0.9583  Acc=0.9200
+    对抗_D         | F1=0.9547  Acc=0.9133
+    对抗_E         | F1=0.9565  Acc=0.9167
+    对抗_F         | F1=0.9761  Acc=0.9533
+    对抗_G         | F1=0.9601  Acc=0.9233
+    对抗_H         | F1=0.9583  Acc=0.9200
+    对抗_I         | F1=0.9831  Acc=0.9667
+
+消融实验: 四通道融合模型逐通道置零
+
+    原始样本         -text     | F1=0.3168  Acc=0.5183
+    原始样本         -phonetic | F1=0.9103  Acc=0.9100
+    原始样本         -visual   | F1=0.9023  Acc=0.9000
+    原始样本         -bow      | F1=0.9076  Acc=0.9067
+    对抗_A         -text     | F1=0.3099  Acc=0.1833
+    对抗_A         -phonetic | F1=0.9779  Acc=0.9567
+    对抗_A         -visual   | F1=0.9796  Acc=0.9600
+    对抗_A         -bow      | F1=0.9796  Acc=0.9600
+    对抗_B         -text     | F1=0.4334  Acc=0.2767
+    对抗_B         -phonetic | F1=0.9967  Acc=0.9933
+    对抗_B         -visual   | F1=0.9967  Acc=0.9933
+    对抗_B         -bow      | F1=0.9967  Acc=0.9933
+    对抗_C         -text     | F1=0.3425  Acc=0.2067
+    对抗_C         -phonetic | F1=0.9529  Acc=0.9100
+    对抗_C         -visual   | F1=0.9601  Acc=0.9233
+    对抗_C         -bow      | F1=0.9601  Acc=0.9233
+    对抗_D         -text     | F1=0.3240  Acc=0.1933
+    对抗_D         -phonetic | F1=0.9547  Acc=0.9133
+    对抗_D         -visual   | F1=0.9601  Acc=0.9233
+    对抗_D         -bow      | F1=0.9565  Acc=0.9167
+    对抗_E         -text     | F1=0.3696  Acc=0.2267
+    对抗_E         -phonetic | F1=0.9565  Acc=0.9167
+    对抗_E         -visual   | F1=0.9601  Acc=0.9233
+    对抗_E         -bow      | F1=0.9565  Acc=0.9167
+    对抗_F         -text     | F1=0.3607  Acc=0.2200
+    对抗_F         -phonetic | F1=0.9761  Acc=0.9533
+    对抗_F         -visual   | F1=0.9796  Acc=0.9600
+    对抗_F         -bow      | F1=0.9761  Acc=0.9533
+    对抗_G         -text     | F1=0.3516  Acc=0.2133
+    对抗_G         -phonetic | F1=0.9565  Acc=0.9167
+    对抗_G         -visual   | F1=0.9637  Acc=0.9300
+    对抗_G         -bow      | F1=0.9565  Acc=0.9167
+    对抗_H         -text     | F1=0.3827  Acc=0.2367
+    对抗_H         -phonetic | F1=0.9510  Acc=0.9067
+    对抗_H         -visual   | F1=0.9601  Acc=0.9233
+    对抗_H         -bow      | F1=0.9565  Acc=0.9167
+    对抗_I         -text     | F1=0.3516  Acc=0.2133
+    对抗_I         -phonetic | F1=0.9831  Acc=0.9667
+    对抗_I         -visual   | F1=0.9848  Acc=0.9700
+    对抗_I         -bow      | F1=0.9831  Acc=0.9667
+
+[可视化] 生成图表...
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 21407 (\N{CJK UNIFIED IDEOGRAPH-539F}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 22987 (\N{CJK UNIFIED IDEOGRAPH-59CB}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 26679 (\N{CJK UNIFIED IDEOGRAPH-6837}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 26412 (\N{CJK UNIFIED IDEOGRAPH-672C}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 23545 (\N{CJK UNIFIED IDEOGRAPH-5BF9}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 25239 (\N{CJK UNIFIED IDEOGRAPH-6297}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 21508 (\N{CJK UNIFIED IDEOGRAPH-5404}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 25915 (\N{CJK UNIFIED IDEOGRAPH-653B}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 20987 (\N{CJK UNIFIED IDEOGRAPH-51FB}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 31867 (\N{CJK UNIFIED IDEOGRAPH-7C7B}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 22411 (\N{CJK UNIFIED IDEOGRAPH-578B}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 19979 (\N{CJK UNIFIED IDEOGRAPH-4E0B}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 19981 (\N{CJK UNIFIED IDEOGRAPH-4E0D}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 21516 (\N{CJK UNIFIED IDEOGRAPH-540C}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 27169 (\N{CJK UNIFIED IDEOGRAPH-6A21}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 30340 (\N{CJK UNIFIED IDEOGRAPH-7684}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 27604 (\N{CJK UNIFIED IDEOGRAPH-6BD4}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 22235 (\N{CJK UNIFIED IDEOGRAPH-56DB}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 36890 (\N{CJK UNIFIED IDEOGRAPH-901A}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 36947 (\N{CJK UNIFIED IDEOGRAPH-9053}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 34701 (\N{CJK UNIFIED IDEOGRAPH-878D}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 21512 (\N{CJK UNIFIED IDEOGRAPH-5408}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 25991 (\N{CJK UNIFIED IDEOGRAPH-6587}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 28040 (\N{CJK UNIFIED IDEOGRAPH-6D88}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 26420 (\N{CJK UNIFIED IDEOGRAPH-6734}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 32032 (\N{CJK UNIFIED IDEOGRAPH-7D20}) missing from font(s) Arial.
+  plt.tight_layout(); fig.savefig(os.path.join(FIGURES_DIR, 'compare_f1.png'), dpi=150)
+  图表已保存: D:\Code\Python\Big Data\Text-defence\results\figures
+
+============================================================
+  ✅ 实验03+04 全部完成!
+  结果: D:\Code\Python\Big Data\Text-defence\results/eval_results.csv
+  图表: D:\Code\Python\Big Data\Text-defence\results\figures/
+============================================================
+[数据] 读取原始数据...
+[INFO] 使用设备: cuda (GPU=ON)
+[INFO] 加载数据: D:\Code\Python\Big Data\Text-defence\data\raw\spam_data.csv, 共 2000 条
+[数据] 原始数据: 2000 条
+[数据] 对抗样本已存在，跳过生成
+[数据] 训练集: 2800 条，测试集: 3300 条
+[视觉通道] 可用中文字体: 5 个
+[INFO] 使用设备: cuda
+
+=======================================================
+  实验 02: 训练baseline模型
+=======================================================
+[文本通道] 加载 BERT 模型: bert-base-chinese
+
+=======================================================
+  训练: 朴素 BERT | epochs=1 lr=2e-05 device=cuda
+=======================================================
+Epoch 1/1: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████| 630/630 [00:46<00:00, 13.67it/s, loss=0.1655]
+  Epoch 1/1 | Loss=0.1833 | Acc=0.9571 | F1=0.9710 | T=47s
+✅ baseline_bert.pth 已保存
+[文本通道] 加载 BERT 模型: bert-base-chinese
+
+=======================================================
+  训练: BERT + 正规化 | epochs=1 lr=2e-05 device=cuda
+=======================================================
+Epoch 1/1: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████| 630/630 [00:46<00:00, 13.55it/s, loss=0.0125]
+  Epoch 1/1 | Loss=0.1852 | Acc=0.9571 | F1=0.9710 | T=47s
+✅ baseline_bert_aug.pth 已保存
+
+=======================================================
+  实验 03: 训练四通道融合模型
+=======================================================
+[文本通道] 加载 BERT 模型: bert-base-chinese
+[视觉通道] 加载 ResNet18 预训练模型
+[字袋通道] 输入维度: 1260, 输出维度: 128
+[融合模型] 总输入维度: 1664, 设备: cuda
+BERT权重已加载 (199 keys)
+可训练参数: 12,625,474
+
+=======================================================
+  训练: 四通道融合 | epochs=2 lr=0.0001 device=cuda
+=======================================================
+Epoch 1/2: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████| 630/630 [01:09<00:00,  9.02it/s, loss=0.1020]
+  Epoch 1/2 | Loss=0.0884 | Acc=0.9571 | F1=0.9718 | T=76s
+Epoch 2/2: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████| 630/630 [01:09<00:00,  9.09it/s, loss=0.0012]
+  Epoch 2/2 | Loss=0.0619 | Acc=0.9536 | F1=0.9691 | T=152s
+✅ fusion_model.pth 已保存
+
+=======================================================
+  实验 04: 全面评测
+=======================================================
+强攻击样本生成: J=300, K=300, L=300 条
+[文本通道] 加载 BERT 模型: bert-base-chinese
+[文本通道] 加载 BERT 模型: bert-base-chinese
+[文本通道] 加载 BERT 模型: bert-base-chinese
+[文本通道] BERT 参数已冻结
+[视觉通道] 加载 ResNet18 预训练模型
+[视觉通道] ResNet 参数已冻结
+[字袋通道] 输入维度: 1260, 输出维度: 128
+[融合模型] 总输入维度: 1664, 设备: cuda
+
+  朴素 BERT:
+    原始样本                           | F1=0.9016  Acc=0.9050
+    对抗_A (字符删除)                    | F1=0.9547  Acc=0.9133
+    对抗_B (字符插入)                    | F1=0.9983  Acc=0.9967
+    对抗_C (跨语种同形)                   | F1=0.9286  Acc=0.8667
+    对抗_D (零宽注入)                    | F1=0.9305  Acc=0.8700
+    对抗_E (同义词)                     | F1=0.9305  Acc=0.8700
+    对抗_F (音近字)                     | F1=0.9637  Acc=0.9300
+    对抗_G (形近字)                     | F1=0.9324  Acc=0.8733
+    对抗_H (繁简混用)                    | F1=0.9343  Acc=0.8767
+    对抗_I (字符乱序)                    | F1=0.9691  Acc=0.9400
+    对抗_J (★强乱序)                    | F1=0.9708  Acc=0.9433
+    对抗_K (★强音近)                    | F1=0.9726  Acc=0.9467
+    对抗_L (★混合攻击)                   | F1=0.9655  Acc=0.9333
+
+  BERT + 正规化:
+    原始样本                           | F1=0.8644  Acc=0.8750
+    对抗_A (字符删除)                    | F1=0.9565  Acc=0.9167
+    对抗_B (字符插入)                    | F1=0.9831  Acc=0.9667
+    对抗_C (跨语种同形)                   | F1=0.8868  Acc=0.7967
+    对抗_D (零宽注入)                    | F1=0.8868  Acc=0.7967
+    对抗_E (同义词)                     | F1=0.8909  Acc=0.8033
+    对抗_F (音近字)                     | F1=0.9601  Acc=0.9233
+    对抗_G (形近字)                     | F1=0.9071  Acc=0.8300
+    对抗_H (繁简混用)                    | F1=0.9111  Acc=0.8367
+    对抗_I (字符乱序)                    | F1=0.9761  Acc=0.9533
+    对抗_J (★强乱序)                    | F1=0.9882  Acc=0.9767
+    对抗_K (★强音近)                    | F1=0.9744  Acc=0.9500
+    对抗_L (★混合攻击)                   | F1=0.9882  Acc=0.9767
+
+  四通道融合 (本文):
+    原始样本                           | F1=0.9044  Acc=0.9017
+    对抗_A (字符删除)                    | F1=0.9796  Acc=0.9600
+    对抗_B (字符插入)                    | F1=0.9983  Acc=0.9967
+    对抗_C (跨语种同形)                   | F1=0.9619  Acc=0.9267
+    对抗_D (零宽注入)                    | F1=0.9655  Acc=0.9333
+    对抗_E (同义词)                     | F1=0.9637  Acc=0.9300
+    对抗_F (音近字)                     | F1=0.9796  Acc=0.9600
+    对抗_G (形近字)                     | F1=0.9673  Acc=0.9367
+    对抗_H (繁简混用)                    | F1=0.9619  Acc=0.9267
+    对抗_I (字符乱序)                    | F1=0.9779  Acc=0.9567
+    对抗_J (★强乱序)                    | F1=0.9831  Acc=0.9667
+    对抗_K (★强音近)                    | F1=0.9865  Acc=0.9733
+    对抗_L (★混合攻击)                   | F1=0.9813  Acc=0.9633
+
+消融实验 (置零近似，存在分布偏移，结果供参考):
+
+  置零 text 通道:
+    原始样本                           | F1=0.6667  Acc=0.5000
+    对抗_A (字符删除)                    | F1=1.0000  Acc=1.0000
+    对抗_B (字符插入)                    | F1=1.0000  Acc=1.0000
+    对抗_C (跨语种同形)                   | F1=1.0000  Acc=1.0000
+    对抗_D (零宽注入)                    | F1=1.0000  Acc=1.0000
+    对抗_E (同义词)                     | F1=1.0000  Acc=1.0000
+    对抗_F (音近字)                     | F1=1.0000  Acc=1.0000
+    对抗_G (形近字)                     | F1=1.0000  Acc=1.0000
+    对抗_H (繁简混用)                    | F1=1.0000  Acc=1.0000
+    对抗_I (字符乱序)                    | F1=1.0000  Acc=1.0000
+    对抗_J (★强乱序)                    | F1=1.0000  Acc=1.0000
+    对抗_K (★强音近)                    | F1=1.0000  Acc=1.0000
+    对抗_L (★混合攻击)                   | F1=1.0000  Acc=1.0000
+
+  置零 phonetic 通道:
+    原始样本                           | F1=0.9052  Acc=0.9033
+    对抗_A (字符删除)                    | F1=0.9779  Acc=0.9567
+    对抗_B (字符插入)                    | F1=0.9983  Acc=0.9967
+    对抗_C (跨语种同形)                   | F1=0.9565  Acc=0.9167
+    对抗_D (零宽注入)                    | F1=0.9601  Acc=0.9233
+    对抗_E (同义词)                     | F1=0.9619  Acc=0.9267
+    对抗_F (音近字)                     | F1=0.9796  Acc=0.9600
+    对抗_G (形近字)                     | F1=0.9583  Acc=0.9200
+    对抗_H (繁简混用)                    | F1=0.9601  Acc=0.9233
+    对抗_I (字符乱序)                    | F1=0.9779  Acc=0.9567
+    对抗_J (★强乱序)                    | F1=0.9831  Acc=0.9667
+    对抗_K (★强音近)                    | F1=0.9865  Acc=0.9733
+    对抗_L (★混合攻击)                   | F1=0.9779  Acc=0.9567
+
+  置零 visual 通道:
+    原始样本                           | F1=0.9040  Acc=0.9033
+    对抗_A (字符删除)                    | F1=0.9779  Acc=0.9567
+    对抗_B (字符插入)                    | F1=0.9983  Acc=0.9967
+    对抗_C (跨语种同形)                   | F1=0.9547  Acc=0.9133
+    对抗_D (零宽注入)                    | F1=0.9529  Acc=0.9100
+    对抗_E (同义词)                     | F1=0.9529  Acc=0.9100
+    对抗_F (音近字)                     | F1=0.9796  Acc=0.9600
+    对抗_G (形近字)                     | F1=0.9565  Acc=0.9167
+    对抗_H (繁简混用)                    | F1=0.9529  Acc=0.9100
+    对抗_I (字符乱序)                    | F1=0.9761  Acc=0.9533
+    对抗_J (★强乱序)                    | F1=0.9796  Acc=0.9600
+    对抗_K (★强音近)                    | F1=0.9848  Acc=0.9700
+    对抗_L (★混合攻击)                   | F1=0.9761  Acc=0.9533
+
+  置零 bow 通道:
+    原始样本                           | F1=0.9076  Acc=0.9050
+    对抗_A (字符删除)                    | F1=0.9779  Acc=0.9567
+    对抗_B (字符插入)                    | F1=0.9983  Acc=0.9967
+    对抗_C (跨语种同形)                   | F1=0.9637  Acc=0.9300
+    对抗_D (零宽注入)                    | F1=0.9637  Acc=0.9300
+    对抗_E (同义词)                     | F1=0.9655  Acc=0.9333
+    对抗_F (音近字)                     | F1=0.9813  Acc=0.9633
+    对抗_G (形近字)                     | F1=0.9619  Acc=0.9267
+    对抗_H (繁简混用)                    | F1=0.9673  Acc=0.9367
+    对抗_I (字符乱序)                    | F1=0.9779  Acc=0.9567
+    对抗_J (★强乱序)                    | F1=0.9831  Acc=0.9667
+    对抗_K (★强音近)                    | F1=0.9865  Acc=0.9733
+    对抗_L (★混合攻击)                   | F1=0.9796  Acc=0.9600
+
+图表已保存: D:\Code\Python\Big Data\Text-defence\results\figures/compare_f1.png
+
+=======================================================
+  ✅ 全部实验完成!
+  结果: D:\Code\Python\Big Data\Text-defence\results/eval_results.csv
+  图表: D:\Code\Python\Big Data\Text-defence\results\figures/compare_f1.png
+=======================================================

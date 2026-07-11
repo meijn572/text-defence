@@ -7,7 +7,7 @@
 
 训练方式:
   - 在垃圾文本分类任务上微调 BERT
-  - 可单独作为基线模型 (baseline)
+  - 可单独作为baseline模型 (baseline)
   - 也可作为融合模型的一部分 (冻结或微调)
 """
 
@@ -36,10 +36,10 @@ class TextChannel(nn.Module):
 
         print(f"[文本通道] 加载 BERT 模型: {model_name}")
         self.tokenizer = BertTokenizer.from_pretrained(
-            model_name, local_files_only=True
+            model_name, local_files_only=False
         )
         self.bert = BertModel.from_pretrained(
-            model_name, local_files_only=True
+            model_name, local_files_only=False
         )
         self.dropout = nn.Dropout(dropout)
         self.feature_dim = 768  # BERT-base 的隐藏维度
@@ -95,7 +95,7 @@ class TextChannel(nn.Module):
 
 class BertClassifier(nn.Module):
     """
-    基于 BERT 的二分类器 (基线模型)
+    基于 BERT 的二分类器 (baseline模型)
 
     结构: BERT → [CLS] → Dropout → FC(2) → Softmax
     """
@@ -141,7 +141,7 @@ def train_bert_classifier(model, train_loader, val_loader,
     criterion = nn.CrossEntropyLoss()
 
     print(f"\n{'='*50}")
-    print(f"  训练 BERT 基线分类器")
+    print(f"  训练 BERT baseline分类器")
     print(f"  Epochs: {epochs}, LR: {lr}")
     print(f"{'='*50}")
 

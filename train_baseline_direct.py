@@ -3,7 +3,7 @@
 import sys, os, traceback
 
 # 设置项目路径
-BASE = r'd:\3_second\big_data\work\text-defense'
+BASE = os.path.dirname(os.path.abspath(__file__))  # 自动获取路径
 os.chdir(BASE)
 if BASE not in sys.path:
     sys.path.insert(0, BASE)
@@ -14,7 +14,9 @@ try:
     import os, sys
     from utils import DATA_ADV
     
-    train_path = os.path.join(DATA_ADV, 'train.csv')
+    train_filename = os.environ.get('TRAIN_FILE', 'train.csv')
+    model_suffix = os.environ.get('MODEL_SUFFIX', '')
+    train_path = os.path.join(DATA_ADV, train_filename)
     train_df = pd.read_csv(train_path)
     print(f"  Loaded {len(train_df)} records", flush=True)
 
@@ -23,6 +25,7 @@ try:
     import torch.nn as nn
     import numpy as np
     from sklearn.model_selection import train_test_split
+    from sklearn.metrics import f1_score
     from tqdm import tqdm
     print("  Basic imports OK", flush=True)
 
@@ -43,7 +46,7 @@ try:
         model = model.to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
         criterion = nn.CrossEntropyLoss()
-        best_acc = 0.0
+        best_f1 = 0.0
         best_state = None
 
         print(f"\n{'='*50}")
@@ -82,14 +85,17 @@ try:
 
             avg_val_loss = val_loss / len(val_loader)
             val_acc = sum(1 for p, l in zip(all_preds, all_labels) if p == l) / len(all_labels)
-            print(f"  Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Acc: {val_acc:.4f}")
+            val_f1 = f1_score(all_labels, all_preds, zero_division=0)
+            marker = ' ★' if val_f1 > best_f1 else ''
+            print(f"  Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Acc: {val_acc:.4f} | F1: {val_f1:.4f}{marker}")
 
-            if val_acc > best_acc:
-                best_acc = val_acc
+            if val_f1 > best_f1:
+                best_f1 = val_f1
                 best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
         if best_state:
             model.load_state_dict(best_state)
+        print(f"  最优验证 F1: {best_f1:.4f}")
         return model
 
     # ================================================================
@@ -97,7 +103,7 @@ try:
     # ================================================================
     set_seed(42)
     print("=" * 60, flush=True)
-    print("  实验 02: 训练基线模型 (CPU)", flush=True)
+    print(f"  实验 02: 训练baseline模型 ({DEVICE})", flush=True)
     print(f"  训练数据: {len(train_df)} 条", flush=True)
     print(f"    正常: {(train_df['label']==0).sum()}, 垃圾: {(train_df['label']==1).sum()}", flush=True)
     print("=" * 60, flush=True)
@@ -121,33 +127,33 @@ try:
     )
     print(f"  Train: {len(X_tr)}, Val: {len(X_val)}", flush=True)
 
-    # 训练基线1: 朴素BERT
+    # 训练baseline1: 朴素BERT
     print("Step 4: Training baseline 1 (BERT plain)...", flush=True)
     model1 = BertClassifier(freeze_bert=False)
     train_loader1 = create_data_loader(X_tr, y_tr, batch_size=4, shuffle=True)
     val_loader1 = create_data_loader(X_val, y_val, batch_size=8, shuffle=False)
     model1 = train_model(model1, train_loader1, val_loader1,
-                         epochs=1, lr=2e-5, model_name="BERT基线", device=DEVICE)
+                         epochs=3, lr=2e-5, model_name="BERTbaseline", device=DEVICE)
 
-    save_path1 = os.path.join(BASE, 'data', 'processed', 'baseline_bert.pth')
+    save_path1 = os.path.join(BASE, 'data', 'processed', f'baseline_bert{model_suffix}.pth')
     os.makedirs(os.path.dirname(save_path1), exist_ok=True)
     torch.save(model1.state_dict(), save_path1)
-    print(f"\n基线1模型已保存: {save_path1}")
+    print(f"\nbaseline1模型已保存: {save_path1}")
 
-    # 训练基线2: BERT + 正规化 + 增强
+    # 训练baseline2: BERT + 正规化 + 增强
     print("Step 5: Training baseline 2 (BERT + norm + aug)...", flush=True)
     model2 = BertClassifier(freeze_bert=False)
     train_loader2 = create_data_loader(X_tr_clean, y_tr, batch_size=4, shuffle=True)
     val_loader2 = create_data_loader(X_val_clean, y_val, batch_size=8, shuffle=False)
     model2 = train_model(model2, train_loader2, val_loader2,
-                         epochs=1, lr=2e-5, model_name="BERT+正规化+增强", device=DEVICE)
+                         epochs=3, lr=2e-5, model_name="BERT+正规化+增强", device=DEVICE)
 
-    save_path2 = os.path.join(BASE, 'data', 'processed', 'baseline_bert_aug.pth')
+    save_path2 = os.path.join(BASE, 'data', 'processed', f'baseline_bert_aug{model_suffix}.pth')
     torch.save(model2.state_dict(), save_path2)
-    print(f"\n基线2模型已保存: {save_path2}")
+    print(f"\nbaseline2模型已保存: {save_path2}")
 
     print(f"\n{'='*60}")
-    print(f"  ✓ 基线模型训练完成!")
+    print(f"  ✓ baseline模型训练完成!")
     print(f"{'='*60}")
 
 except Exception as e:
