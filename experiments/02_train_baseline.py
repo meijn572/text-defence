@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-实验 02: 训练基线模型
+实验 02: 训练baseline模型
 
-训练两个基线模型:
+训练两个baseline模型:
   1. 朴素 BERT (无任何增强)
-  2. BERT + 正规化 + A/B增强 (鲁棒基线)
+  2. BERT + 正规化 + A/B增强 (鲁棒baseline)
 
 两者都用于后续消融实验的对比
 """
@@ -113,7 +113,7 @@ def train_model(model, train_loader, val_loader, epochs: int,
 def main():
     set_seed(42)
     print("=" * 60)
-    print("  实验 02: 训练基线模型")
+    print("  实验 02: 训练baseline模型")
     print("=" * 60)
 
     # ================================================================
@@ -136,7 +136,7 @@ def main():
     train_texts = train_df['text'].tolist()
     train_labels = train_df['label'].tolist()
 
-    # 为基线2: 应用正规化预处理
+    # 为baseline2: 应用正规化预处理
     train_texts_clean = [preprocess_text(t) for t in train_texts]
 
     X_tr, X_val, y_tr, y_val = train_test_split(
@@ -149,10 +149,10 @@ def main():
     )
 
     # ================================================================
-    # 3. 训练基线 1: 朴素 BERT
+    # 3. 训练baseline 1: 朴素 BERT
     # ================================================================
     print(f"\n{'#'*50}")
-    print(f"#  基线 1: 朴素 BERT (无增强)")
+    print(f"#  baseline 1: 朴素 BERT (无增强)")
     print(f"{'#'*50}")
 
     model1 = BertClassifier(freeze_bert=False)
@@ -163,7 +163,7 @@ def main():
 
     model1, history1 = train_model(
         model1, train_loader1, val_loader1,
-        epochs=1, lr=2e-5, model_name="BERT基线", device=DEVICE
+        epochs=1, lr=2e-5, model_name="BERTbaseline", device=DEVICE
     )
 
     # 保存模型
@@ -171,13 +171,13 @@ def main():
                               'baseline_bert.pth')
     os.makedirs(os.path.dirname(save_path1), exist_ok=True)
     torch.save(model1.state_dict(), save_path1)
-    print(f"\n基线1模型已保存: {save_path1}")
+    print(f"\nbaseline1模型已保存: {save_path1}")
 
     # ================================================================
-    # 4. 训练基线 2: BERT + 正规化 + A/B增强
+    # 4. 训练baseline 2: BERT + 正规化 + A/B增强
     # ================================================================
     print(f"\n{'#'*50}")
-    print(f"#  基线 2: BERT + 正规化 + A/B增强")
+    print(f"#  baseline 2: BERT + 正规化 + A/B增强")
     print(f"{'#'*50}")
 
     model2 = BertClassifier(freeze_bert=False)
@@ -194,10 +194,10 @@ def main():
     save_path2 = os.path.join(os.path.dirname(__file__), '..', 'data', 'processed',
                               'baseline_bert_aug.pth')
     torch.save(model2.state_dict(), save_path2)
-    print(f"\n基线2模型已保存: {save_path2}")
+    print(f"\nbaseline2模型已保存: {save_path2}")
 
     print(f"\n{'='*60}")
-    print(f"  ✓ 基线模型训练完成!")
+    print(f"  ✓ baseline模型训练完成!")
     print(f"{'='*60}")
 
 

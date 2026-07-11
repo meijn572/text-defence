@@ -47,6 +47,7 @@ try:
     from defense.fusion_model import FusionClassifier, create_data_loader
     from attack.char_shuffle import attack_adjacent_swap
     from attack.homophone_chinese import attack_homophone
+    from attack import is_attack_applicable
 
     print("  Imports OK", flush=True)
 
@@ -107,35 +108,39 @@ try:
         'original_text': normal_texts,
     })
 
-    df_J = pd.DataFrame({
-        'text': [attack_adjacent_swap(t, swap_ratio=0.8) for t in spam_texts],
-        'label': 1,
-        'attack_type': 'J',
-        'original_text': spam_texts,
-    })
-    df_K = pd.DataFrame({
-        'text': [attack_homophone(t, replace_ratio=0.8) for t in spam_texts],
-        'label': 1,
-        'attack_type': 'K',
-        'original_text': spam_texts,
-    })
-    df_L = pd.DataFrame({
-        'text': [
-            attack_adjacent_swap(
-                attack_homophone(t, replace_ratio=0.8),
-                swap_ratio=0.8,
-            )
-            for t in spam_texts
-        ],
-        'label': 1,
-        'attack_type': 'L',
-        'original_text': spam_texts,
-    })
+    def mix_with_matched_normals(attack_df):
+        normal_count = round(len(attack_df) * len(normal_for_adv) / len(spam_texts))
+        return pd.concat([
+            normal_for_adv.sample(n=normal_count, random_state=42),
+            attack_df,
+        ], ignore_index=True).sample(frac=1, random_state=42)
+
+    def strong_attack_df(attack_id, transform):
+        records = []
+        for original_text in spam_texts:
+            if not is_attack_applicable(original_text, attack_id):
+                continue
+            attacked_text = transform(original_text)
+            if attacked_text != original_text:
+                records.append({
+                    'text': attacked_text,
+                    'label': 1,
+                    'attack_type': attack_id,
+                    'original_text': original_text,
+                })
+        return pd.DataFrame(records, columns=['text', 'label', 'attack_type', 'original_text'])
+
+    df_J = strong_attack_df('J', lambda text: attack_adjacent_swap(text, swap_ratio=0.8))
+    df_K = strong_attack_df('K', lambda text: attack_homophone(text, replace_ratio=0.8))
+    df_L = strong_attack_df(
+        'L',
+        lambda text: attack_adjacent_swap(attack_homophone(text, replace_ratio=0.8), swap_ratio=0.8),
+    )
 
     # J/K/L 单文件评测口径：强攻击垃圾 + 全部正常样本
-    df_J_mixed = pd.concat([normal_for_adv, df_J], ignore_index=True).sample(frac=1, random_state=42)
-    df_K_mixed = pd.concat([normal_for_adv, df_K], ignore_index=True).sample(frac=1, random_state=42)
-    df_L_mixed = pd.concat([normal_for_adv, df_L], ignore_index=True).sample(frac=1, random_state=42)
+    df_J_mixed = mix_with_matched_normals(df_J)
+    df_K_mixed = mix_with_matched_normals(df_K)
+    df_L_mixed = mix_with_matched_normals(df_L)
 
     for df_adv, fname in [
         (df_J_mixed, 'adv_J_strong_shuffle.csv'),
@@ -152,7 +157,7 @@ try:
     ATTACK_NAMES = {
         'A': '字符删除', 'B': '字符插入', 'C': '跨语种同形', 'D': '零宽注入',
         'E': '同义词', 'F': '音近字', 'G': '形近字', 'H': '繁简混用', 'I': '字符乱序',
-        'J': '★强乱序', 'K': '★强音近', 'L': '★混合攻击',
+        'J': '★强乱序', 'K': '★强音近', 'L': '★混合攻击', 'M': '拼音首字母镶嵌',
     }
 
     subsets = {}
@@ -177,9 +182,15 @@ try:
         'J': 'adv_J_strong_shuffle.csv',
         'K': 'adv_K_strong_homophone.csv',
         'L': 'adv_L_combined.csv',
+        'M': 'adv_M_pinyin_abbrev.csv',
     }
 
-    for aid in 'ABCDEFGHIJKL':
+    requested_attacks = os.environ.get('EVAL_ATTACKS', 'ABCDEFGHIJKLM').upper()
+    requested_attacks = ''.join(aid for aid in requested_attacks if aid in adv_file_map)
+    if not requested_attacks:
+        raise ValueError('EVAL_ATTACKS must include at least one attack ID from A to M')
+
+    for aid in requested_attacks:
         file_name = adv_file_map[aid]
         file_path = os.path.join(DATA_ADV, file_name)
         if not os.path.exists(file_path):
@@ -197,10 +208,11 @@ try:
     # Step 6: 加载模型并评测
     # ================================================================
     print("Step 6: Loading models...", flush=True)
+    model_suffix = os.environ.get('EVAL_MODEL_SUFFIX', '')
     eval_models = {
-        '朴素 BERT': load_model(BertClassifier, 'baseline_bert.pth'),
-        'BERT + 正规化': load_model(BertClassifier, 'baseline_bert_aug.pth'),
-        '四通道融合 (本文)': load_model(FusionClassifier, 'fusion_model.pth'),
+        '朴素 BERT': load_model(BertClassifier, f'baseline_bert{model_suffix}.pth'),
+        'BERT + 正规化': load_model(BertClassifier, f'baseline_bert_aug{model_suffix}.pth'),
+        '四通道融合 (本文)': load_model(FusionClassifier, f'fusion_model{model_suffix}.pth'),
     }
     eval_models = {k: v for k, v in eval_models.items() if v is not None}
 
@@ -237,7 +249,9 @@ try:
     # Step 7: 保存结果与图表
     # ================================================================
     rdf = pd.DataFrame(results)
-    result_csv = os.path.join(RESULTS_DIR, 'eval_results.csv')
+    attack_suffix = '' if requested_attacks == 'ABCDEFGHIJKLM' else f"_{requested_attacks.lower()}"
+    result_suffix = f"{model_suffix}{attack_suffix}"
+    result_csv = os.path.join(RESULTS_DIR, f'eval_results{result_suffix}.csv')
     rdf.to_csv(result_csv, index=False)
 
     main_models = ['朴素 BERT', 'BERT + 正规化', '四通道融合 (本文)']
@@ -252,7 +266,7 @@ try:
         ax.legend(loc='lower right')
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
-        fig_path = os.path.join(FIGURES_DIR, 'compare_f1.png')
+        fig_path = os.path.join(FIGURES_DIR, f'compare_f1{result_suffix}.png')
         fig.savefig(fig_path, dpi=150)
         print(f"\n图表已保存: {fig_path}")
 

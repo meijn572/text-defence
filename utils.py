@@ -10,6 +10,7 @@ import random
 import numpy as np
 import pandas as pd
 from collections import defaultdict
+from functools import lru_cache
 from typing import List, Dict, Tuple, Optional
 
 
@@ -252,6 +253,7 @@ def build_homophone_map() -> Dict[str, List[str]]:
     return homophone_map
 
 
+@lru_cache(maxsize=1)
 def load_homophone_map() -> Dict[str, List[str]]:
     """加载音近字映射表，如果不存在则自动构建"""
     path = os.path.join(DATA_DICT, 'homophone_map.json')

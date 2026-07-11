@@ -62,7 +62,8 @@ def word_tokens(text: object) -> list[str]:
 
 
 def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    train_df = pd.read_csv(DATA_DIR / "train.csv")
+    train_filename = os.environ.get("TRAIN_FILE", "train.csv")
+    train_df = pd.read_csv(DATA_DIR / train_filename)
     test_df = pd.read_csv(DATA_DIR / "test_full.csv")
     train_df = train_df.dropna(subset=["text", "label"]).copy()
     test_df = test_df.dropna(subset=["text", "label"]).copy()
@@ -105,23 +106,74 @@ def metric_row(model_name: str, split_name: str, y_true: list[int], y_pred: np.n
     }
 
 
-def evaluate_by_attack(model_name: str, clf, x_test: np.ndarray, test_df: pd.DataFrame) -> list[dict[str, object]]:
+def evaluation_groups(test_df: pd.DataFrame) -> list[tuple[str, pd.Series]]:
+    """返回标签比例一致的评测子集。
+
+    test_full.csv 是完整数据池，A-I/J-K-L 行本身只有攻击垃圾样本；
+    直接按 attack_type 切分会让攻击子集没有正常类，造成 Precision/F1 虚高。
+    因此攻击子集优先读取对应的混合文件（全部正常 + 对应攻击垃圾）。
+    """
+    groups = [("Original", test_df["attack_type"].isna())]
+    file_map = {
+        "A": "adv_A_char_delete.csv",
+        "B": "adv_B_char_insert.csv",
+        "C": "adv_C_homoglyph_unicode.csv",
+        "D": "adv_D_zero_width.csv",
+        "E": "adv_E_synonym.csv",
+        "F": "adv_F_homophone_cn.csv",
+        "G": "adv_G_homoglyph_cn.csv",
+        "H": "adv_H_fanjian_split.csv",
+        "I": "adv_I_char_shuffle.csv",
+        "J": "adv_J_strong_shuffle.csv",
+        "K": "adv_K_strong_homophone.csv",
+        "L": "adv_L_combined.csv",
+        "M": "adv_M_pinyin_abbrev.csv",
+    }
+    for attack_id, filename in file_map.items():
+        path = DATA_DIR / filename
+        if path.exists():
+            group_df = pd.read_csv(path).dropna(subset=["text", "label"])
+            groups.append((attack_id, group_df))
+        else:
+            groups.append((attack_id, test_df["attack_type"] == attack_id))
+    return groups
+
+
+def evaluate_by_attack(
+    model_name: str,
+    clf,
+    x_test: np.ndarray,
+    test_df: pd.DataFrame,
+    group_feature_builder=None,
+) -> list[dict[str, object]]:
     start = time.perf_counter()
     y_pred_all = clf.predict(x_test)
     elapsed = time.perf_counter() - start
 
     rows = []
-    groups: list[tuple[str, pd.Series]] = [("Original", test_df["attack_type"].isna())]
-    for attack_id in list("ABCDEFGHIJKL"):
-        groups.append((attack_id, test_df["attack_type"] == attack_id))
+    groups = evaluation_groups(test_df)
 
     y_true_all = test_df["label"].tolist()
     rows.append(metric_row(model_name, "ALL", y_true_all, y_pred_all, elapsed))
-    for name, mask in groups:
-        if int(mask.sum()) == 0:
+    for name, group in groups:
+        if isinstance(group, pd.DataFrame):
+            group_texts = group["text"].astype(str).tolist()
+            group_labels = group["label"].astype(int).tolist()
+            # 该子集需要重新预测，不能复用 test_full 的位置索引。
+            if group_feature_builder is None:
+                raise ValueError("混合攻击子集需要 group_feature_builder")
+            group_features = group_feature_builder(group_texts)
+            group_pred = clf.predict(group_features)
+        else:
+            mask = group
+            if int(mask.sum()) == 0:
+                continue
+            idx = np.where(mask.to_numpy())[0]
+            group_labels = test_df.iloc[idx]["label"].tolist()
+            group_pred = y_pred_all[idx]
+        if not group_labels:
             continue
-        idx = np.where(mask.to_numpy())[0]
-        rows.append(metric_row(model_name, name, test_df.iloc[idx]["label"].tolist(), y_pred_all[idx], elapsed))
+        rows.append(metric_row(model_name, name, group_labels, group_pred, elapsed))
     return rows
 
 
@@ -224,7 +276,12 @@ def run_gas_baseline(train_df: pd.DataFrame, test_df: pd.DataFrame) -> list[dict
     clf = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_STATE)
     clf.fit(x_train, y_train)
     print(f"[GAS-lite] classifier training done in {time.perf_counter() - start:.1f}s")
-    return evaluate_by_attack("GAS-lite", clf, x_test, test_df)
+    return evaluate_by_attack(
+        "GAS-lite", clf, x_test, test_df,
+        group_feature_builder=lambda texts: gas_features(
+            [char_tokens(t) for t in texts], vocab, risk, idf
+        ),
+    )
 
 
 def train_word2vec_vectors(tokenized_train: list[list[str]], tokenized_test: list[list[str]], idf: dict[str, float], name: str):
@@ -246,6 +303,7 @@ def train_word2vec_vectors(tokenized_train: list[list[str]], tokenized_test: lis
     return (
         w2v_sentence_vectors(w2v, tokenized_train, idf),
         w2v_sentence_vectors(w2v, tokenized_test, idf),
+        w2v,
     )
 
 
@@ -259,34 +317,52 @@ def run_word2vec_baselines(train_df: pd.DataFrame, test_df: pd.DataFrame) -> lis
     train_word_tokens = [word_tokens(t) for t in train_texts]
     test_word_tokens = [word_tokens(t) for t in test_texts]
     word_idf = build_idf([str(t) for t in train_texts], analyzer=word_tokens)
-    x_train_word, x_test_word = train_word2vec_vectors(train_word_tokens, test_word_tokens, word_idf, "Word2Vec-w")
+    x_train_word, x_test_word, word_w2v = train_word2vec_vectors(
+        train_word_tokens, test_word_tokens, word_idf, "Word2Vec-w"
+    )
 
     print("[Word2Vec-w+LR] training classifier...")
     start = time.perf_counter()
     word_lr = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=-1)
     word_lr.fit(x_train_word, y_train)
     print(f"[Word2Vec-w+LR] classifier training done in {time.perf_counter() - start:.1f}s")
-    results.extend(evaluate_by_attack("Word2Vec-w+LR", word_lr, x_test_word, test_df))
+    results.extend(evaluate_by_attack(
+        "Word2Vec-w+LR", word_lr, x_test_word, test_df,
+        group_feature_builder=lambda texts: w2v_sentence_vectors(
+            word_w2v, [word_tokens(t) for t in texts], word_idf
+        ),
+    ))
 
     print("[Word2Vec-c] tokenizing characters...")
     train_char_tokens = [char_tokens(t) for t in train_texts]
     test_char_tokens = [char_tokens(t) for t in test_texts]
     char_idf = build_idf([str(t) for t in train_texts], analyzer=char_tokens)
-    x_train_char, x_test_char = train_word2vec_vectors(train_char_tokens, test_char_tokens, char_idf, "Word2Vec-c")
+    x_train_char, x_test_char, char_w2v = train_word2vec_vectors(
+        train_char_tokens, test_char_tokens, char_idf, "Word2Vec-c"
+    )
 
     print("[Word2Vec-c+LR] training classifier...")
     start = time.perf_counter()
     char_lr = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_STATE, n_jobs=-1)
     char_lr.fit(x_train_char, y_train)
     print(f"[Word2Vec-c+LR] classifier training done in {time.perf_counter() - start:.1f}s")
-    results.extend(evaluate_by_attack("Word2Vec-c+LR", char_lr, x_test_char, test_df))
+    char_features = lambda texts: w2v_sentence_vectors(
+        char_w2v, [char_tokens(t) for t in texts], char_idf
+    )
+    results.extend(evaluate_by_attack(
+        "Word2Vec-c+LR", char_lr, x_test_char, test_df,
+        group_feature_builder=char_features,
+    ))
 
     print("[Word2Vec-c+GBDT] training classifier...")
     start = time.perf_counter()
     gbdt = GradientBoostingClassifier(random_state=RANDOM_STATE, n_estimators=150, max_depth=3, learning_rate=0.05)
     gbdt.fit(x_train_char, y_train)
     print(f"[Word2Vec-c+GBDT] classifier training done in {time.perf_counter() - start:.1f}s")
-    results.extend(evaluate_by_attack("Word2Vec-c+GBDT", gbdt, x_test_char, test_df))
+    results.extend(evaluate_by_attack(
+        "Word2Vec-c+GBDT", gbdt, x_test_char, test_df,
+        group_feature_builder=char_features,
+    ))
 
     return results
 
@@ -319,11 +395,17 @@ def run_doc2vec_baseline(train_df: pd.DataFrame, test_df: pd.DataFrame) -> list[
     gbdt.fit(x_train, y_train)
     print(f"[Doc2Vec-c+GBDT] classifier training done in {time.perf_counter() - start:.1f}s")
 
-    return evaluate_by_attack("Doc2Vec-c+GBDT", gbdt, x_test, test_df)
+    return evaluate_by_attack(
+        "Doc2Vec-c+GBDT", gbdt, x_test, test_df,
+        group_feature_builder=lambda texts: np.vstack([
+            d2v.infer_vector(char_tokens(text), epochs=30) for text in texts
+        ]).astype(np.float32),
+    )
 
 
 def main() -> None:
     train_df, test_df = load_data()
+    result_suffix = os.environ.get("RESULT_SUFFIX", "")
     print(f"train samples: {len(train_df)} | test samples: {len(test_df)}")
     print("train labels:", train_df["label"].value_counts().sort_index().to_dict())
     print("test labels:", test_df["label"].value_counts().sort_index().to_dict())
@@ -334,11 +416,11 @@ def main() -> None:
     rows.extend(run_doc2vec_baseline(train_df, test_df))
 
     result_df = pd.DataFrame(rows)
-    out_path = RESULT_DIR / "classic_baseline_results.csv"
+    out_path = RESULT_DIR / f"classic_baseline_results{result_suffix}.csv"
     result_df.to_csv(out_path, index=False, encoding="utf-8-sig")
 
     pivot = result_df.pivot(index="attack_type", columns="model", values="f1")
-    pivot_path = RESULT_DIR / "classic_baseline_f1_pivot.csv"
+    pivot_path = RESULT_DIR / f"classic_baseline_f1_pivot{result_suffix}.csv"
     pivot.to_csv(pivot_path, encoding="utf-8-sig")
 
     print("\nF1 by attack type:")

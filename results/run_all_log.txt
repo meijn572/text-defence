@@ -172,7 +172,7 @@ D:\Code\Python\Big Data\Text-defence\run_fusion_eval.py:217: UserWarning: Glyph 
 [INFO] 使用设备: cuda
 
 =======================================================
-  实验 02: 训练基线模型
+  实验 02: 训练baseline模型
 =======================================================
 [文本通道] 加载 BERT 模型: bert-base-chinese
 

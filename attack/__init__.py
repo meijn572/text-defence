@@ -18,6 +18,9 @@ from .homophone_chinese import attack_homophone
 from .homoglyph_chinese import attack_homoglyph_cn
 from .fanjian_split import attack_fanjian_mix, attack_split_char
 from .char_shuffle import attack_adjacent_swap
+from .pinyin_abbrev import attack_pinyin_abbrev
+from .homoglyph_unicode import HOMOGLYPH_UNICODE_MAP
+from .synonym_replace import SYNONYM_MAP
 
 # 攻击函数注册表 —— 方便批量调用
 ATTACK_REGISTRY = {
@@ -30,6 +33,7 @@ ATTACK_REGISTRY = {
     'G': ('homoglyph_cn',      attack_homoglyph_cn,      '中文形近字替换'),
     'H': ('fanjian_split',     attack_fanjian_mix,       '繁简混用'),
     'I': ('char_shuffle',      attack_adjacent_swap,     '字符乱序'),
+    'M': ('pinyin_abbrev',     attack_pinyin_abbrev,     '拼音首字母混淆'),
 }
 
 
@@ -38,9 +42,36 @@ def get_attack_names() -> list:
     return list(ATTACK_REGISTRY.keys())
 
 
+def contains_chinese(text: str) -> bool:
+    """判断文本是否至少包含一个常用汉字。"""
+    return any('\u4e00' <= char <= '\u9fff' for char in str(text))
+
+
+def is_attack_applicable(text: str, attack_id: str) -> bool:
+    """判断攻击是否适用于文本的语言与可替换字符。
+
+    中文专用攻击不应用于纯英文短信；跨语种同形字和同义词攻击还需包含
+    对应的可替换对象。调用方仍应丢弃攻击后未发生实际改变的样本。
+    """
+    if not text:
+        return False
+
+    if attack_id in {'A', 'F', 'G', 'H', 'K', 'L', 'M'}:
+        return contains_chinese(text)
+    if attack_id == 'C':
+        return any(char in HOMOGLYPH_UNICODE_MAP for char in text)
+    if attack_id == 'E':
+        return any(word in text for word in SYNONYM_MAP)
+    if attack_id in {'I', 'J'}:
+        return len(text) >= 2
+    return True
+
+
 def apply_attack(text: str, attack_id: str) -> str:
     """对单条文本应用指定攻击"""
     if attack_id not in ATTACK_REGISTRY:
         raise ValueError(f"未知攻击类型: {attack_id}, 可选: {list(ATTACK_REGISTRY.keys())}")
+    if not is_attack_applicable(text, attack_id):
+        return text
     _, func, _ = ATTACK_REGISTRY[attack_id]
     return func(text)

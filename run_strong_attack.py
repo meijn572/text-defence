@@ -12,11 +12,21 @@ sys.path.insert(0, BASE)
 df = pd.read_csv(os.path.join(BASE, 'data', 'adversarial', 'test_full.csv'))
 spam_mask = (df['label'] == 1) & (df['attack_type'].isna())
 spam_texts = df[spam_mask]['text'].tolist()
+normal_df = df[(df['label'] == 0) & (df['attack_type'].isna())][['text', 'label', 'attack_type', 'original_text']].copy()
 print(f"垃圾文本数: {len(spam_texts)}")
+
+
+def mix_with_matched_normals(attack_df):
+    normal_count = round(len(attack_df) * len(normal_df) / len(spam_texts))
+    return pd.concat([
+        normal_df.sample(n=normal_count, random_state=42),
+        attack_df,
+    ], ignore_index=True).sample(frac=1, random_state=42)
 
 from utils import set_seed, DATA_ADV, RESULTS_DIR
 from attack.char_shuffle import attack_shuffle
 from attack.homophone_chinese import attack_homophone
+from attack import is_attack_applicable
 from defense.text_channel import BertClassifier
 from defense.fusion_model import FusionClassifier, create_data_loader
 
@@ -28,29 +38,41 @@ random.seed(42)
 # ============================================
 print("\n生成加强攻击...")
 
+# 仅保留适用且实际发生改写的强攻击样本。
+def strong_attack_df(attack_id, transform):
+    rows = []
+    for original_text in spam_texts:
+        if not is_attack_applicable(original_text, attack_id):
+            continue
+        attacked_text = transform(original_text)
+        if attacked_text != original_text:
+            rows.append({
+                'text': attacked_text,
+                'label': 1,
+                'attack_type': attack_id,
+                'original_text': original_text,
+            })
+    return pd.DataFrame(rows, columns=['text', 'label', 'attack_type', 'original_text'])
+
 # J: 强乱序 (大窗口)
-adv_J = []
-for t in spam_texts:
-    adv_J.append(attack_shuffle(t, window_size=7, shuffle_ratio=0.8))
-df_J = pd.DataFrame({'text': adv_J, 'label': [1]*len(adv_J), 'attack_type': 'J', 'original_text': spam_texts})
-df_J.to_csv(os.path.join(DATA_ADV, 'adv_J_strong_shuffle.csv'), index=False)
+df_J = strong_attack_df('J', lambda text: attack_shuffle(text, window_size=7, shuffle_ratio=0.8))
+df_J_mixed = mix_with_matched_normals(df_J)
+df_J_mixed.to_csv(os.path.join(DATA_ADV, 'adv_J_strong_shuffle.csv'), index=False)
 print(f"  J.强乱序: {len(df_J)} 条")
 
 # K: 强音近 (高替换率)
-adv_K = []
-for t in spam_texts:
-    adv_K.append(attack_homophone(t, replace_ratio=0.8))
-df_K = pd.DataFrame({'text': adv_K, 'label': [1]*len(adv_K), 'attack_type': 'K', 'original_text': spam_texts})
-df_K.to_csv(os.path.join(DATA_ADV, 'adv_K_strong_homophone.csv'), index=False)
+df_K = strong_attack_df('K', lambda text: attack_homophone(text, replace_ratio=0.8))
+df_K_mixed = mix_with_matched_normals(df_K)
+df_K_mixed.to_csv(os.path.join(DATA_ADV, 'adv_K_strong_homophone.csv'), index=False)
 print(f"  K.强音近: {len(df_K)} 条")
 
 # L: 混合攻击 (音近 + 乱序)
-adv_L = []
-for t in spam_texts:
-    t2 = attack_homophone(t, replace_ratio=0.8)
-    adv_L.append(attack_shuffle(t2, window_size=5, shuffle_ratio=0.8))
-df_L = pd.DataFrame({'text': adv_L, 'label': [1]*len(adv_L), 'attack_type': 'L', 'original_text': spam_texts})
-df_L.to_csv(os.path.join(DATA_ADV, 'adv_L_combined.csv'), index=False)
+df_L = strong_attack_df(
+    'L',
+    lambda text: attack_shuffle(attack_homophone(text, replace_ratio=0.8), window_size=5, shuffle_ratio=0.8),
+)
+df_L_mixed = mix_with_matched_normals(df_L)
+df_L_mixed.to_csv(os.path.join(DATA_ADV, 'adv_L_combined.csv'), index=False)
 print(f"  L.混合(音近+乱序): {len(df_L)} 条")
 
 # 构建扩展测试集（原测试集 + 3种强攻击）
@@ -90,10 +112,19 @@ orig_mask = test_ext['attack_type'].isna()
 subsets['原始样本'] = (test_ext[orig_mask]['text'].tolist(), test_ext[orig_mask]['label'].tolist())
 
 for aid in list('ABCDEFGHI') + list('JKL'):
-    mask = test_ext['attack_type'] == aid
-    if mask.sum() > 0:
+    file_map = {
+        'A': 'adv_A_char_delete.csv', 'B': 'adv_B_char_insert.csv',
+        'C': 'adv_C_homoglyph_unicode.csv', 'D': 'adv_D_zero_width.csv',
+        'E': 'adv_E_synonym.csv', 'F': 'adv_F_homophone_cn.csv',
+        'G': 'adv_G_homoglyph_cn.csv', 'H': 'adv_H_fanjian_split.csv',
+        'I': 'adv_I_char_shuffle.csv', 'J': 'adv_J_strong_shuffle.csv',
+        'K': 'adv_K_strong_homophone.csv', 'L': 'adv_L_combined.csv',
+    }
+    path = os.path.join(DATA_ADV, file_map[aid])
+    if os.path.exists(path):
+        group = pd.read_csv(path)
         name = ATTACK_NAMES.get(aid, aid)
-        subsets[f'对抗_{aid} ({name})'] = (test_ext[mask]['text'].tolist(), test_ext[mask]['label'].tolist())
+        subsets[f'对抗_{aid} ({name})'] = (group['text'].astype(str).tolist(), group['label'].astype(int).tolist())
 
 # 评测
 results = []

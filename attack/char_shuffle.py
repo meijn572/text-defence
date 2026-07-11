@@ -9,6 +9,7 @@
 """
 
 import random
+from collections import Counter
 
 
 def attack_adjacent_swap(text: str, swap_ratio: float = 0.4) -> str:
@@ -42,13 +43,31 @@ def attack_adjacent_swap(text: str, swap_ratio: float = 0.4) -> str:
     return ''.join(chars)
 
 
+def attack_shuffle(text: str, window_size: int = 7, shuffle_ratio: float = 0.8) -> str:
+    """在局部窗口内打乱字符，保持长度和字符多重集合不变。"""
+    if not text or len(text) < 2:
+        return text
+
+    chars = list(text)
+    window_size = max(2, min(window_size, len(chars)))
+    index = 0
+    while index < len(chars) - 1:
+        end = min(len(chars), index + window_size)
+        if random.random() < shuffle_ratio and end - index >= 2:
+            window = chars[index:end]
+            random.shuffle(window)
+            chars[index:end] = window
+        index += window_size
+    return ''.join(chars)
+
+
 # ============================================================
 # 保持原 verify（但建议修正 set→Counter，这里先不动结构）
 # ============================================================
 
 def verify_shuffle(original: str, shuffled: str) -> dict:
     return {
-        'same_chars': set(original) == set(shuffled),
+        'same_chars': Counter(original) == Counter(shuffled),
         'same_length': len(original) == len(shuffled),
         'diff_count': sum(1 for a, b in zip(original, shuffled) if a != b),
     }

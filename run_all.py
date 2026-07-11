@@ -51,6 +51,7 @@ from defense.fusion_model import FusionClassifier, create_data_loader
 from attack import ATTACK_REGISTRY
 from attack.char_shuffle import attack_adjacent_swap
 from attack.homophone_chinese import attack_homophone
+from attack import is_attack_applicable
 
 set_seed(42)
 DEV = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -141,10 +142,10 @@ def load_model(cls, path):
 
 
 # ============================================================
-# 实验 02: 训练基线模型
+# 实验 02: 训练baseline模型
 # ============================================================
 print("\n" + "=" * 55)
-print("  实验 02: 训练基线模型")
+print("  实验 02: 训练baseline模型")
 print("=" * 55)
 
 train_texts  = train_df['text'].tolist()
@@ -156,7 +157,7 @@ X_tr, X_val, y_tr, y_val = train_test_split(
 X_tr_c, X_val_c, _, _ = train_test_split(
     train_texts_clean, train_labels, test_size=0.1, random_state=42, stratify=train_labels)
 
-# 基线1：朴素 BERT
+# baseline1：朴素 BERT
 model_bert = train_model(
     BertClassifier(freeze_bert=False),
     create_data_loader(X_tr,   y_tr,  batch_size=4, shuffle=True),
@@ -167,7 +168,7 @@ torch.save(model_bert.state_dict(),
            os.path.join(BASE, 'data', 'processed', 'baseline_bert.pth'))
 print("✅ baseline_bert.pth 已保存")
 
-# 基线2：BERT + 正规化
+# baseline2：BERT + 正规化
 model_bert_aug = train_model(
     BertClassifier(freeze_bert=False),
     create_data_loader(X_tr_c,  y_tr,  batch_size=4, shuffle=True),
@@ -220,48 +221,83 @@ print("=" * 55)
 
 # 生成强攻击子集 J/K/L
 spam_mask  = (test_df['label'] == 1) & (test_df['attack_type'].isna())
+normal_mask = (test_df['label'] == 0) & (test_df['attack_type'].isna())
 spam_texts = test_df[spam_mask]['text'].tolist()
+normal_texts = test_df[normal_mask]['text'].tolist()
 
-df_J = pd.DataFrame({'text': [attack_adjacent_swap(t, swap_ratio=0.8) for t in spam_texts],
-                     'label': 1, 'attack_type': 'J', 'original_text': spam_texts})
-df_K = pd.DataFrame({'text': [attack_homophone(t, replace_ratio=0.8) for t in spam_texts],
-                     'label': 1, 'attack_type': 'K', 'original_text': spam_texts})
-df_L = pd.DataFrame({
-    'text': [
-        attack_adjacent_swap(
-            attack_homophone(t, replace_ratio=0.8),
-            swap_ratio=0.8
-        )
-        for t in spam_texts
-    ],
-    'label': 1,
-    'attack_type': 'L',
-    'original_text': spam_texts
+normal_for_adv = pd.DataFrame({
+    'text': normal_texts,
+    'label': [0] * len(normal_texts),
+    'attack_type': ['normal'] * len(normal_texts),
+    'original_text': normal_texts,
 })
+
+
+def mix_with_matched_normals(attack_df):
+    normal_count = round(len(attack_df) * len(normal_for_adv) / len(spam_texts))
+    return pd.concat([
+        normal_for_adv.sample(n=normal_count, random_state=42),
+        attack_df,
+    ], ignore_index=True).sample(frac=1, random_state=42)
+
+def strong_attack_df(attack_id, transform):
+    rows = []
+    for original_text in spam_texts:
+        if not is_attack_applicable(original_text, attack_id):
+            continue
+        attacked_text = transform(original_text)
+        if attacked_text != original_text:
+            rows.append({
+                'text': attacked_text,
+                'label': 1,
+                'attack_type': attack_id,
+                'original_text': original_text,
+            })
+    return pd.DataFrame(rows, columns=['text', 'label', 'attack_type', 'original_text'])
+
+
+df_J = strong_attack_df('J', lambda text: attack_adjacent_swap(text, swap_ratio=0.8))
+df_K = strong_attack_df('K', lambda text: attack_homophone(text, replace_ratio=0.8))
+df_L = strong_attack_df(
+    'L',
+    lambda text: attack_adjacent_swap(attack_homophone(text, replace_ratio=0.8), swap_ratio=0.8),
+)
+strong_files = []
 for df_adv, fname in [(df_J, 'adv_J_strong_shuffle.csv'),
                       (df_K, 'adv_K_strong_homophone.csv'),
                       (df_L, 'adv_L_combined.csv')]:
-    df_adv.to_csv(os.path.join(DATA_ADV, fname), index=False)
-print(f"强攻击样本生成: J={len(df_J)}, K={len(df_K)}, L={len(df_L)} 条")
+    mixed_df = mix_with_matched_normals(df_adv)
+    mixed_df.to_csv(os.path.join(DATA_ADV, fname), index=False)
+    strong_files.append((fname, mixed_df))
+print(f"强攻击样本生成（含正常样本）: J={len(df_J)}, K={len(df_K)}, L={len(df_L)} 条")
 
 test_ext = pd.concat([test_df, df_J, df_K, df_L], ignore_index=True)
 
-# 构建子集
+# 构建子集：原始样本与每个adv文件均保持相同标签比例
 ATTACK_NAMES = {
     'A':'字符删除','B':'字符插入','C':'跨语种同形','D':'零宽注入',
     'E':'同义词','F':'音近字','G':'形近字','H':'繁简混用','I':'字符乱序',
-    'J':'★强乱序','K':'★强音近','L':'★混合攻击'
+    'J':'★强乱序','K':'★强音近','L':'★混合攻击','M':'拼音首字母混淆'
 }
 subsets = {}
 orig_mask = test_ext['attack_type'].isna()
 subsets['原始样本'] = (test_ext[orig_mask]['text'].tolist(),
                        test_ext[orig_mask]['label'].tolist())
-for aid in 'ABCDEFGHIJKL':
-    mask = test_ext['attack_type'] == aid
-    if mask.sum() > 0:
+adv_file_map = {
+    'A': 'adv_A_char_delete.csv', 'B': 'adv_B_char_insert.csv',
+    'C': 'adv_C_homoglyph_unicode.csv', 'D': 'adv_D_zero_width.csv',
+    'E': 'adv_E_synonym.csv', 'F': 'adv_F_homophone_cn.csv',
+    'G': 'adv_G_homoglyph_cn.csv', 'H': 'adv_H_fanjian_split.csv',
+    'I': 'adv_I_char_shuffle.csv', 'J': 'adv_J_strong_shuffle.csv',
+    'K': 'adv_K_strong_homophone.csv', 'L': 'adv_L_combined.csv',
+    'M': 'adv_M_pinyin_abbrev.csv',
+}
+for aid in 'ABCDEFGHIJKLM':
+    path = os.path.join(DATA_ADV, adv_file_map[aid])
+    if os.path.exists(path):
+        subset_df = pd.read_csv(path)
         subsets[f'对抗_{aid} ({ATTACK_NAMES[aid]})'] = (
-            test_ext[mask]['text'].tolist(),
-            test_ext[mask]['label'].tolist())
+            subset_df['text'].tolist(), subset_df['label'].tolist())
 
 # 加载所有模型（评测用，freeze_channels=True）
 eval_models = {

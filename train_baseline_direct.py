@@ -14,7 +14,9 @@ try:
     import os, sys
     from utils import DATA_ADV
     
-    train_path = os.path.join(DATA_ADV, 'train.csv')
+    train_filename = os.environ.get('TRAIN_FILE', 'train.csv')
+    model_suffix = os.environ.get('MODEL_SUFFIX', '')
+    train_path = os.path.join(DATA_ADV, train_filename)
     train_df = pd.read_csv(train_path)
     print(f"  Loaded {len(train_df)} records", flush=True)
 
@@ -101,7 +103,7 @@ try:
     # ================================================================
     set_seed(42)
     print("=" * 60, flush=True)
-    print(f"  实验 02: 训练基线模型 ({DEVICE})", flush=True)
+    print(f"  实验 02: 训练baseline模型 ({DEVICE})", flush=True)
     print(f"  训练数据: {len(train_df)} 条", flush=True)
     print(f"    正常: {(train_df['label']==0).sum()}, 垃圾: {(train_df['label']==1).sum()}", flush=True)
     print("=" * 60, flush=True)
@@ -125,20 +127,20 @@ try:
     )
     print(f"  Train: {len(X_tr)}, Val: {len(X_val)}", flush=True)
 
-    # 训练基线1: 朴素BERT
+    # 训练baseline1: 朴素BERT
     print("Step 4: Training baseline 1 (BERT plain)...", flush=True)
     model1 = BertClassifier(freeze_bert=False)
     train_loader1 = create_data_loader(X_tr, y_tr, batch_size=4, shuffle=True)
     val_loader1 = create_data_loader(X_val, y_val, batch_size=8, shuffle=False)
     model1 = train_model(model1, train_loader1, val_loader1,
-                         epochs=3, lr=2e-5, model_name="BERT基线", device=DEVICE)
+                         epochs=3, lr=2e-5, model_name="BERTbaseline", device=DEVICE)
 
-    save_path1 = os.path.join(BASE, 'data', 'processed', 'baseline_bert.pth')
+    save_path1 = os.path.join(BASE, 'data', 'processed', f'baseline_bert{model_suffix}.pth')
     os.makedirs(os.path.dirname(save_path1), exist_ok=True)
     torch.save(model1.state_dict(), save_path1)
-    print(f"\n基线1模型已保存: {save_path1}")
+    print(f"\nbaseline1模型已保存: {save_path1}")
 
-    # 训练基线2: BERT + 正规化 + 增强
+    # 训练baseline2: BERT + 正规化 + 增强
     print("Step 5: Training baseline 2 (BERT + norm + aug)...", flush=True)
     model2 = BertClassifier(freeze_bert=False)
     train_loader2 = create_data_loader(X_tr_clean, y_tr, batch_size=4, shuffle=True)
@@ -146,12 +148,12 @@ try:
     model2 = train_model(model2, train_loader2, val_loader2,
                          epochs=3, lr=2e-5, model_name="BERT+正规化+增强", device=DEVICE)
 
-    save_path2 = os.path.join(BASE, 'data', 'processed', 'baseline_bert_aug.pth')
+    save_path2 = os.path.join(BASE, 'data', 'processed', f'baseline_bert_aug{model_suffix}.pth')
     torch.save(model2.state_dict(), save_path2)
-    print(f"\n基线2模型已保存: {save_path2}")
+    print(f"\nbaseline2模型已保存: {save_path2}")
 
     print(f"\n{'='*60}")
-    print(f"  ✓ 基线模型训练完成!")
+    print(f"  ✓ baseline模型训练完成!")
     print(f"{'='*60}")
 
 except Exception as e:

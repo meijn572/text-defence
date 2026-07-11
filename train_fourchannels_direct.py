@@ -18,7 +18,9 @@ try:
     import pandas as pd
     from utils import DATA_ADV, DATA_PROCESSED
 
-    train_path = os.path.join(DATA_ADV, 'train.csv')
+    train_filename = os.environ.get('TRAIN_FILE', 'train.csv')
+    model_suffix = os.environ.get('MODEL_SUFFIX', '')
+    train_path = os.path.join(DATA_ADV, train_filename)
     if not os.path.exists(train_path):
         print(f"[ERROR] 训练数据不存在: {train_path}")
         print("  请先运行: python experiments/generate_adv.py")
@@ -29,9 +31,9 @@ try:
           f"(normal={int((train_df.label==0).sum())}, "
           f"spam={int((train_df.label==1).sum())})", flush=True)
 
-    bert_path = os.path.join(DATA_PROCESSED, 'baseline_bert.pth')
+    bert_path = os.path.join(DATA_PROCESSED, f'baseline_bert{model_suffix}.pth')
     if not os.path.exists(bert_path):
-        print(f"[ERROR] 基线 BERT 权重不存在: {bert_path}")
+        print(f"[ERROR] baseline BERT 权重不存在: {bert_path}")
         print("  请先运行: python train_baseline_direct.py")
         sys.exit(1)
 
@@ -175,7 +177,7 @@ try:
     # ================================================================
     # Step 7: 保存模型
     # ================================================================
-    save_path = os.path.join(DATA_PROCESSED, 'fusion_model.pth')
+    save_path = os.path.join(DATA_PROCESSED, f'fusion_model{model_suffix}.pth')
     os.makedirs(DATA_PROCESSED, exist_ok=True)
     torch.save({'model_state': model.state_dict(), 'best_f1': best_f1}, save_path)
     print(f"\n融合模型已保存: {save_path}")

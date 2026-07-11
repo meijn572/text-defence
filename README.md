@@ -126,7 +126,7 @@ results/classic_baseline_f1_pivot.csv
 
 | 方法 | 说明 |
 |------|------|
-| GAS-lite | 基于字符共现图和风险传播的轻量图结构基线 |
+| GAS-lite | 基于字符共现图和风险传播的轻量图结构baseline |
 | Word2Vec-w+LR | jieba 分词 + 词级 Word2Vec + Logistic Regression |
 | Word2Vec-c+LR | 字符级 Word2Vec + Logistic Regression |
 | Word2Vec-c+GBDT | 字符级 Word2Vec + Gradient Boosting Decision Tree |
@@ -241,7 +241,7 @@ flowchart TD
     D --> D1["对垃圾样本做全部 9 种攻击 A~I"]
     D1 --> D2["test_full.csv<br/>3,300条<br/>(600原始 + 300×9对抗)"]
     
-    C2 --> E["实验02: 训练基线BERT"]
+    C2 --> E["实验02: 训练baselineBERT"]
     C2 --> F["实验03: 训练融合模型"]
     D2 --> G["实验04: 评测对比"]
 ```
@@ -406,7 +406,7 @@ CPU 环境下脚本默认每个内容类型最多抽样 30 条进行快速评估
 
 | 文件 | 大小 | 说明 |
 |------|------|------|
-| `baseline_bert.pth` | 391MB | 朴素 BERT 基线 |
+| `baseline_bert.pth` | 391MB | 朴素 BERT baseline |
 | `baseline_bert_aug.pth` | 391MB | BERT + 正规化 |
 | `fusion_model.pth` | 438MB | 四通道融合模型 |
 
